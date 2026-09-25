@@ -16,16 +16,24 @@ import { Badge, Button, Refusal, call, type ReasonBody } from '../../_components
  *   · "deny" exercises the failure path, where the slot must defer rather than
  *     execute.
  */
-export default function LocalApproveForm({
-  requestId,
-  intent,
-  existingHandle,
-}: {
+/**
+ * The routing shell. Same reasoning as the transfer page: `useRouter` needs a
+ * mounted Next router, so the form itself takes a `navigate` function and the
+ * shell supplies the real one.
+ */
+export default function LocalApproveForm(props: Omit<ApproveFormProps, 'navigate'>) {
+  const router = useRouter();
+  return <ApproveForm {...props} navigate={(href) => router.push(href)} />;
+}
+
+export interface ApproveFormProps {
   requestId: string;
   intent: string;
   existingHandle: string | null;
-}) {
-  const router = useRouter();
+  navigate: (href: string) => void;
+}
+
+export function ApproveForm({ requestId, intent, existingHandle, navigate }: ApproveFormProps) {
   const [handle, setHandle] = useState(existingHandle ? '' : 'alice');
   const [stale, setStale] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -44,10 +52,9 @@ export default function LocalApproveForm({
       );
       setDone(result.continuityId);
       if (isLink) {
-        router.push('/?linked=1');
-        router.refresh();
+        navigate('/?linked=1');
       } else {
-        setTimeout(() => router.push('/'), 1200);
+        setTimeout(() => navigate('/'), 1200);
       }
     } catch (err) {
       setError((err as { body: ReasonBody }).body);
@@ -62,7 +69,7 @@ export default function LocalApproveForm({
     try {
       await call('/api/auth/deny', { json: { requestId, reason: 'denied by the human' } });
       setDone('denied');
-      setTimeout(() => router.push('/'), 800);
+      setTimeout(() => navigate('/'), 800);
     } finally {
       setBusy(false);
     }
