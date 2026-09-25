@@ -1,4 +1,4 @@
-# Demo runbook — five minutes, six beats
+# Demo runbook — five minutes, five beats
 
 Everything below is a button on **`/admin`** except where noted. The board lives
 at **`/board`** and should be on the projector before you start.
@@ -18,7 +18,7 @@ Open `/board` on the projector, `/admin` on the laptop.
 npm test && npm run e2e && npm run mcp-check
 ```
 
-Green means the six beats are rehearsed. On `/admin`, press **Reset demo state**.
+Green means the five beats are rehearsed. On `/admin`, press **Reset demo state**.
 
 > **The live checks need the fallback idp.** `e2e` and `mcp-check` press Approve
 > on your behalf, which is only possible when the identity provider is simulated.
@@ -32,7 +32,7 @@ Green means the six beats are rehearsed. On `/admin`, press **Reset demo state**
 > ```
 >
 > `PRESENCE_IDP_MODE=local` forces the fallback even with credentials present, so
-> verifying the six beats never means unregistering anything. Run the real
+> verifying the five beats never means unregistering anything. Run the real
 > `oidc` path by hand, the way a judge would: sign in, get a slot, approve on the
 > phone.
 
@@ -46,8 +46,11 @@ Green means the six beats are rehearsed. On `/admin`, press **Reset demo state**
         → wait ~15s                   # nothing to press; the draw closes itself
         → a slot is allocated to you, with a live countdown
         → "Ask me to authorize" → approve on your phone
-        → "Present approval to the gate" → SLOT CONFIRMED
+        → the handover completes on its own once you approve
 ```
+
+The slot is then **locked to you**. There is nothing to press afterwards — no
+transfer, no hand-off — by design.
 
 If you press **Join the queue** and see `queue_closed`, the draw for this event
 has already been settled — from a previous run, or by the bot army. Press
@@ -62,7 +65,9 @@ Approve on your behalf.
 > "Concert Kit proved bots can be kept out of the queue. But a ticket changes
 > hands after that — and last year's winning ticketing project shipped tickets
 > that were freely transferable, so one `transferFrom` walked past every check.
-> We built the layer that is missing: what happens to a slot *after* it is won."
+> We took the other route — the slot never leaves the human who won it. What is
+> left to attack is the queue itself, and that is what these five beats are
+> about."
 
 ## Beat 1 · Speed is purchasable (`/admin` → **Run the comparison**)
 
@@ -109,29 +114,21 @@ already allocated to the next candidate.
 
 ## Beat 4 · 40 accounts, 2 humans ⭐️
 
-`/admin` → **Run the laundering simulation**.
+`/admin` → **Build 40 accounts → 2 humans**, then **Have all 40 join the queue**.
 
-Four transfers get through. Then every single fresh account is refused
-`inbound_cap_reached`, in a scroll of red.
+The board's queue grows by **two**. Thirty-eight of the forty attempts land on an
+entry that already existed.
 
-> "Forty accounts. It doesn't matter — the counter is keyed on the *human*. He
-> can buy as many signups as he likes; he's still two people, and he's done."
+> "Forty signups, two humans, two places in line. The second account for the same
+> person buys nothing — the constraint is on the human, not the account."
 
-Point at the inbound bars on the board: `2/2` for each of two continuity ids.
+Be precise about this one on stage: it is not forty refusals. The server is
+*idempotent* here on purpose, because a person refreshing the page must get their
+own entry back rather than an error. So say "two entries created, thirty-eight
+landed on one that already existed" — which is the honest and more interesting
+version anyway.
 
-## Beat 5 · The friction is real — don't hide it
-
-Console (`/`) → create a transfer link, **send it, then wait**. Open the link
-after a minute or two.
-
-The window has **not** started. Press Accept and it starts, right then.
-
-Complete it as the recipient.
-
-> "That's the fifteen seconds we're not cutting. To a friend it's a formality. To
-> a scalper it's hourly labour he can't automate and can't scale."
-
-## Beat 6 · Three attacks
+## Beat 5 · Three attacks
 
 `/admin` → **Run all three**.
 
@@ -150,9 +147,10 @@ Each card ends with `protected action executed: false` and a database read-back.
 ## Closer
 
 > "We don't claim to solve scalping. The premium exists; someone will do the
-> work. What we built is the layer that decides **who** does it and **what it
-> costs them** — and unlike the entry gate, this one holds after the ticket
-> changes hands."
+> work. Locking the slot removes every cheap way to do it and leaves only the
+> expensive one — hiring real people to queue. What we will not pretend is that
+> it is free: you cannot give a ticket to a friend either, and there is no knob
+> to loosen that."
 
 ---
 
@@ -163,4 +161,4 @@ Each card ends with `protected action executed: false` and a database read-back.
 | Board shows "set the database up" | `npm run seed` |
 | Everything 404s | server wasn't started with `ENABLE_DEV_ROUTES=1` |
 | Yellow "LOCAL IDP FALLBACK" banner | expected — see README. The gate is real; identity is simulated. |
-| Nothing works at all | **Fallback**: `npm run e2e` runs all six beats headlessly and prints the evidence |
+| Nothing works at all | **Fallback**: `npm run e2e` runs every beat headlessly and prints the evidence |

@@ -345,7 +345,7 @@ export async function attackEnvironmentSwap(
 function protectedActionFingerprint(): { slotsHeld: number; consumed: number } {
   const slotsHeld = (
     getDb()
-      .prepare(`SELECT COUNT(*) AS n FROM slot WHERE state IN ('CONFIRMED','TRANSFERRED')`)
+      .prepare(`SELECT COUNT(*) AS n FROM slot WHERE state = 'CONFIRMED'`)
       .get() as { n: number }
   ).n;
   const consumed = (

@@ -159,7 +159,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: 'queue.status',
       description:
         'Report your position: draw rank, whether a slot is currently allocated to you, how long is ' +
-        'left in that window, and how many inbound transfers you have already received. Read-only.',
+        'left in that window, and which slots you hold. Read-only.',
       inputSchema: {
         type: 'object',
         properties: {

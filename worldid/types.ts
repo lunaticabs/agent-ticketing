@@ -9,7 +9,7 @@
 import type { IdpMode } from './config';
 
 /** What the fresh authentication is for. Drives the bound action. */
-export type AuthIntent = 'link' | 'purchase' | 'transfer';
+export type AuthIntent = 'link' | 'purchase';
 
 export interface StartFreshAuthInput {
   /** e.g. `buy_slot:evt_tokyo`. RED LINE 1: bound to the operation. */

@@ -10,7 +10,7 @@ slot did not move" are different claims and only the second one matters.
 The governing rule for all of it:
 
 > A protected action happens **only** inside the single transaction in
-> `lib/gate.ts` (or its transfer counterpart) that consumes a nullifier. A refusal
+> `lib/gate.ts` that consumes a nullifier. A refusal
 > returns before that transaction opens. There is no code path where a check
 > fails and the write still happens — that is a structural property, not a
 > convention.
@@ -38,10 +38,10 @@ The governing rule for all of it:
 
 | # | Scenario | Machine code | HTTP | Protected action | Verified by |
 |---|---|---|---|---|---|
-| 13 | Approval re-targeted at a different slot | `approval_signal_mismatch` | 403 | **did not run** | slot holders unchanged |
-| 14 | Approval with a swapped recipient in the signal | `approval_signal_mismatch` | 403 | **did not run** | same |
-| 15 | A transfer proof presented to authorize a purchase | `approval_action_mismatch` | 403 | **did not run** | same |
-| 16 | Approval bound to a different slot than the caller's allocation | `approval_signal_mismatch` | 403 | **did not run** | same |
+| 13 | Approval re-targeted at a different event | `approval_action_mismatch` | 403 | **did not run** | slot holders unchanged |
+| 14 | Approval with a different human swapped into the signal | `approval_signal_mismatch` | 403 | **did not run** | same |
+| 15 | A purchase proof presented for a different event's action | `approval_action_mismatch` | 403 | **did not run** | same |
+| 16 | A purchase proof presented for a generic `verify_user` action | `approval_action_mismatch` | 403 | **did not run** | same |
 
 ## 3. Replay and duplication (RED LINE 5)
 
@@ -58,31 +58,15 @@ The governing rule for all of it:
 | # | Scenario | Machine code | HTTP | Protected action | Verified by |
 |---|---|---|---|---|---|
 | 22 | Joining after the draw was settled | `queue_closed` | 400 | entry not created | `queue_entry` count unchanged |
-| 23 | Joining twice | — (idempotent) | 200 | returns the existing entry | count stays 1 |
+| 23 | Joining twice, from the same human | — (idempotent) | 200 | returns the existing entry | count stays 1 |
+| 23b | 40 accounts for one human joining | — (idempotent) | 200 | every attempt after the first returns the existing entry | queue length equals the number of **humans**, not accounts |
 | 24 | Claiming with no allocation | `no_slot_allocated` | 400 | **did not run** | — |
 | 25 | Claiming after the window closed and the slot deferred | `deferred_to_next_candidate` | 410 | **did not run** | `consumed_proof` = 0 for that human; the slot is held by someone else |
 | 26 | **Claiming after deferral with a fully valid, fresh, correctly-bound proof** | `deferred_to_next_candidate` | 410 | **did not run** | same — this is the row that shows deferral is final |
 | 27 | Slot already confirmed to this human | `already_owns_entitlement` | 409 | **did not run** | — |
 | 28 | Allocating more slots than `total_slots` | — | — | capped | allocation count = `total_slots` |
 
-## 5. Transfer failures (T-4.x)
-
-| # | Scenario | Machine code | HTTP | Protected action | Verified by |
-|---|---|---|---|---|---|
-| 29 | Transfer under `locked` policy | `transfer_policy_locked` | 409 | offer not created | slot stays `CONFIRMED` |
-| 30 | Second transfer of a slot under `gift` | `transfer_gift_already_used` | 409 | **did not run** | `gift_used` = 1 |
-| 31 | Offering a slot you do not hold | `transfer_not_owner` | 403 | **did not run** | — |
-| 32 | Transferring to yourself | `transfer_recipient_is_holder` | 400 | **did not run** | — |
-| 33 | Recipient already holds a drawn slot | `recipient_already_holds_slot` | 403 | **did not run** | — |
-| 34 | Sender opens a link addressed to the recipient | `approval_identity_mismatch` | 403 | **did not run** | slot holder unchanged |
-| 35 | Sender authorizes on the recipient's behalf | `approval_identity_mismatch` | 403 | **did not run** | same |
-| 36 | Third party completes someone else's transfer | `approval_identity_mismatch` | 403 | **did not run** | same |
-| 37 | **Third inbound transfer to the same human** | `inbound_cap_reached` | 409 | **did not run** | `transfer_inbound` = 2 |
-| 38 | **A brand-new account for that same human** | `inbound_cap_reached` | 409 | **did not run** | the counter is keyed on `continuity_id`, so the new account lands on the exhausted one |
-| 39 | Transfer TTL elapsed without completion | `transfer_expired` | 410 | **did not run** | slot back to `CONFIRMED` with the original holder |
-| 40 | Completing a transfer twice | `transfer_expired` | 410 | **did not run** | conditional UPDATE returns 0 changes; the whole transaction rolls back |
-
-## 6. Grants (T-5.1)
+## 5. Grants (T-5.1)
 
 | # | Scenario | Machine code | HTTP | Verified by |
 |---|---|---|---|---|
@@ -90,7 +74,7 @@ The governing rule for all of it:
 | 42 | Using a revoked grant | — | — | same; revocation is a row update with no cache in front of it |
 | 43 | Unknown scope | `bad_request` | 400 | — |
 
-## 6b. Misconfiguration failures (caught at startup, not at the IdP)
+## 6. Misconfiguration failures (caught at startup, not at the IdP)
 
 | # | Scenario | Where it surfaces | What the operator is told |
 |---|---|---|---|
@@ -108,6 +92,7 @@ page is not a warning.
 |---|---|---|---|---|
 | 44 | Any `/api/dev/*` route with `ENABLE_DEV_ROUTES` unset | `dev_routes_disabled` | **404** | indistinguishable from a route that was never deployed |
 | 45 | `/api/dev/impersonate` with no handle | `bad_request` | 400 | — |
+| 46 | A grant scope the server does not accept | `bad_request` | 400 | the admin panel offers exactly `vip:skip_queue`, asserted by a journey test |
 
 ---
 
@@ -119,11 +104,11 @@ without special-casing:
 ```json
 {
   "ok": false,
-  "code": "inbound_cap_reached",
-  "message": "this human has already received 2 of 2 allowed inbound transfers for this event",
-  "invariant": "RED LINE 9 — the cap is keyed on the human, so a new account does not reset it",
-  "details": { "eventId": "evt_tokyo_night", "recipientContinuityId": "cid_…", "used": 2, "cap": 2 },
-  "hint": "A fresh account does not help: the counter follows the human, not the account."
+  "code": "deferred_to_next_candidate",
+  "message": "your approval window closed, so this slot was passed to the next candidate in the draw",
+  "invariant": "RED LINE 10 — the window closes before the draw, so late arrivals cannot matter",
+  "details": { "eventId": "evt_tokyo_night", "drawnAt": 1790341460428 },
+  "hint": "The window is closed for this event. An organiser can open a new one from /admin."
 }
 ```
 
@@ -145,10 +130,10 @@ moved on; do not retry" ends the loop.
 ## How this file was produced
 
 ```
-npm test              # 45 tests: every red line, plus client-render smoke tests
-npm run e2e           # 9 live HTTP checks: six demo beats + this failure matrix
+npm test              # red-line invariants, user journeys, URL consistency
+npm run e2e           # the demo beats + this failure matrix over real HTTP
                       #   + a real two-socket concurrency race
-npm run mcp-check     # 10 live MCP checks, incl. claim-without-approval
+npm run mcp-check     # the MCP surface, incl. claim-without-approval
 npm run security-check
 ```
 

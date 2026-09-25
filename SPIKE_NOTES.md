@@ -176,7 +176,7 @@ in `INTEGRATION_DEBRIEF.md`.
 | **Status** | ⚠️ partially supported; a relying-party responsibility |
 | **Evidence** | the `getting-started` guide: *"For agent experiences, the application uses the same OIDC federation, binds the issuer and subject to its own account or grant, and issues credentials for its APIs or MCP server."* And the `oidc` guide: *"The token response's opaque access token is an OIDC response artifact. It does not authorize calls to this MCP or downstream services."* |
 | **Conclusion** | the IdP issues **identity**, not authorization for our API. The `oidc` guide also states it as the intended shape for headless agents: *"An ID token after fresh World proof and explicit approval; your backend issues the agent's credential."* |
-| **Implemented** | `POST /api/agent/enroll` (device/consent flow → our own scoped, expiring, HMAC-signed bearer token, scopes `agent:queue`, `agent:claim`, `agent:transfer`). See `lib/agenttoken.ts`. |
+| **Implemented** | `POST /api/agent/enroll` (device/consent flow → our own scoped, expiring, HMAC-signed bearer token, scopes `agent:queue`, `agent:claim`). See `lib/agenttoken.ts`. |
 | **Fallback** | this *is* the shipped design, not a degradation. |
 
 ## S-9 · Revocation

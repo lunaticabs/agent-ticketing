@@ -7,7 +7,8 @@ A queueing and slot-circulation system for events, built for the World
 **"Best Use of World ID for Agents"** track at ETHGlobal Tokyo 2026.
 
 > Not a ticket shop. There is no catalogue, no cart, and no payment integration.
-> What this is: **a queue, an authorization gate, and a circulation policy.**
+> What this is: **a queue and an authorization gate.** Slots are locked to the
+> human who won them.
 
 ---
 
@@ -17,7 +18,7 @@ A queueing and slot-circulation system for events, built for the World
 人 not  →  🎟️
 ```
 
-Three claims, each one demonstrable on stage in under three minutes:
+Two claims, each demonstrable on stage in under three minutes:
 
 1. **Uniqueness is necessary but not sufficient.** One World ID per person kills
    "one script, 500 tickets" — but a single scalper with a faster client still
@@ -29,15 +30,13 @@ Three claims, each one demonstrable on stage in under three minutes:
 2. **The gate is on the server, not in a prompt.** `slot.claim` requires a human
    authorization, and the requirement is enforced behind the tool, not in its
    description. A model can call `slot.claim` with no approval, with a fabricated
-   reference, with a reused one, or with one bound to somebody else's slot. All
-   four are refused, each with a different machine-readable reason.
+   reference, with a reused one, or with one whose parameters have been changed.
+   All four are refused, each with a different machine-readable reason.
 
-3. **Circulation is where scalping actually happens.** Once a ticket is
-   transferable, a scalper does not need to win the queue — he becomes a market
-   maker. So transfers cost friction (a real person, inside a window that
-   expires) and are countable per **human**, not per account. Forty accounts
-   laundering forty slots collapse into two humans and stop dead at four
-   transfers.
+**Slots are locked.** There is no transfer, no secondary circulation and no
+policy knob, because a slot cannot move off the human who won it. That is the
+strongest anti-scalping position available and it is the one this build takes;
+what it costs is that giving a ticket to a friend is not possible at all.
 
 ---
 
@@ -70,7 +69,7 @@ Proceed*. Nothing in the OIDC flow needs it to be trusted. Override with
 `npm run dev:http` or `npm run dev:https` when you want to be explicit.
 
 > **One origin, or links break.** Every absolute URL the app builds — consent
-> links, transfer links, the OIDC `redirect_uri` — must share an origin. The
+> links, the OIDC `redirect_uri` — must share an origin. The
 > redirect URI is authoritative: when `PRESENCE_PUBLIC_URL` is unset the origin
 > is derived from it. If you set both and they disagree, startup says so, and
 > `GET /api/health` reports it under `urls`. See SPIKE_NOTES.md S-0.
@@ -213,9 +212,8 @@ Drive them from **`/admin`**. Everything is a button.
 | 1 | FCFS beaten by a bot army → switch to the draw → the advantage vanishes | A queue that respects arrival order hands the event to whoever has the fastest client. Measured as a z-score against the hypergeometric null, not a hand-picked threshold. |
 | 2 | Slot allocated → agent asks → human approves on their own device → confirmed | The track's "at the moment" requirement, with all four stages recorded. |
 | 3 | Nobody approves → the window closes → **the slot defers** | The failure path *is* the product. The human who missed it cannot buy afterwards, even holding a perfectly valid proof. |
-| 4 | 40 accounts receive transfers → collapse into 2 continuity ids → **the cap holds** | The centrepiece. With `policy=open` so the cap is the *only* rule in the way. |
-| 5 | A normal transfer between friends | Not hidden: the friction is on screen. That is the product claim — courtesy to a friend, cost to a scalper. |
-| 6 | Replay / retarget / environment swap | Each refused with its own code, each ending in a database read-back confirming nothing ran. |
+| 4 | 40 accounts join → collapse into 2 continuity ids → **2 places in line** | The centrepiece. Every extra signup lands on the entry that already exists, because the constraint is on the human, not the account. |
+| 5 | Replay / retarget / environment swap | Each refused with its own code, each ending in a database read-back confirming nothing ran. |
 
 ---
 
@@ -226,12 +224,10 @@ app/            Next.js pages + API routes
   board/        the projector board (1s poll)
   admin/        demo controls
   auth/local/   the fallback consent screen
-  transfer/     the recipient's side of a transfer
 lib/            all business logic
   gate.ts       ← THE gate. every surface calls this one function.
   queue.ts      join, the draw, arrival-order independence
   slots.ts      the state machine: allocate → expire → DEFER
-  transfer.ts   the three lines of defence
   consume.ts    one-time use, as a database constraint
   approval.ts   the four observable stages
   attacks.ts    the three attack demonstrations
@@ -273,13 +269,12 @@ props legitimately build extra inventory — so allocation is budgeted against t
 declared capacity. A test covers it; an earlier version got this wrong and made
 the speed-contrast statistics meaningless.
 
-**Transfer rule 3 and the inbound cap had to be reconciled.** "The recipient must
-not already hold a slot" read literally makes a cap of 2 unreachable: the first
-transfer hands them a slot, so the second is refused for already holding one. The
-reading that gives both rules meaning — and the one the concept doc's own
-annotation points at — is that rule 3 bars double-dipping the *primary
-allocation*, while receiving by transfer is the capped allowance the cap governs.
-`acquired_via` is what distinguishes them.
+**Locked is a real trade-off, not a missing feature.** A transferable ticket turns
+a scalper from a rusher into a market maker: he never has to win the queue, he
+just offers to buy from whoever did. Locking removes that entirely — the only
+remaining attack is hiring people to queue, which is the most expensive one. It
+also removes something real: you cannot give a ticket to a friend, and there is
+no organiser knob to loosen that for a low-demand event.
 
 **The board is not decoration.** Almost every claim here is about something *not*
 happening, and an unobservable claim is indistinguishable from a bluff. So the

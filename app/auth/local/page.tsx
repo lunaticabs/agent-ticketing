@@ -90,8 +90,6 @@ function describeIntent(intent: string): string {
       return 'Link your identity — establishes who you are, nothing more';
     case 'purchase':
       return 'Claim your slot — binds this purchase to you, once';
-    case 'transfer':
-      return 'Receive a transferred slot — only you can do this for yourself';
     default:
       return intent;
   }
