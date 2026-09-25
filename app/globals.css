@@ -1,0 +1,85 @@
+@import 'tailwindcss';
+
+/*
+ * Presence — visual language for a projector.
+ *
+ * Two constraints shaped this: it is read from three metres away in a bright
+ * room, and the numbers that matter (countdowns) change every second. So: dark
+ * background, very large type, tabular figures so digits do not jitter, and a
+ * small palette where each colour means exactly one thing.
+ */
+@theme {
+  --color-ink: #07090d;
+  --color-panel: #10141c;
+  --color-panel-2: #171c26;
+  --color-line: #262d3a;
+  --color-muted: #8b95a7;
+  --color-text: #e8ecf3;
+
+  --color-live: #35d07f; /* allocated / running */
+  --color-warn: #f5b544; /* deferral / window closing */
+  --color-alert: #ff5c6c; /* refusal */
+  --color-brand: #4c8dff; /* World ID / identity */
+  --color-violet: #a97bff; /* transfer */
+}
+
+html,
+body {
+  background: var(--color-ink);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, 'Noto Sans', sans-serif;
+}
+
+/* Countdowns must not reflow as the digits change. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* The flash the board uses when a deferral or refusal happens. */
+@keyframes presence-flash {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 1;
+  }
+  100% {
+    box-shadow: 0 0 0 24px transparent;
+    opacity: 0.85;
+  }
+}
+
+.flash {
+  animation: presence-flash 1.1s ease-out 2;
+}
+
+@keyframes presence-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.pulse {
+  animation: presence-pulse 1.2s ease-in-out infinite;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 6px;
+}
