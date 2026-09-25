@@ -276,7 +276,7 @@ npm install && npm run seed
 ENABLE_DEV_ROUTES=1 npm run dev
 
 npm run spike          # re-verify every §2 claim against the live IdP
-npm test               # 40 invariant tests
+npm test               # 45 tests, incl. every red line
 npm run e2e            # six demo beats + the failure matrix, over HTTP
 npm run mcp-check      # the MCP surface, including claim-without-approval
 npm run build && npm run security-check

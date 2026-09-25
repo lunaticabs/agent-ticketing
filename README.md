@@ -60,7 +60,7 @@ Open **http://localhost:3000/board** — that is the demo.
 | `npm run mcp` | the MCP server (stdio) |
 | `npm run bots` | the bot army (`-- --compare` for the FCFS/lottery side-by-side) |
 | `npm run spike` | re-verify every assumption against the live sandbox IdP |
-| `npm test` | 41 in-process invariant tests (one per red line) |
+| `npm test` | 45 tests: invariant tests for each red line, plus client-render smoke tests |
 | `npm run e2e` | 9 live HTTP checks: all six demo beats + the failure matrix |
 | `npm run mcp-check` | 10 live MCP checks |
 | `npm run security-check` | the T-7.2 self-check (run after `npm run build`) |
@@ -202,7 +202,7 @@ agent/          the standalone agent process
 mcp/            the MCP surface
 scripts/        spike, e2e, mcp-check, security-check, bot-army
 db/             schema.sql, seed, reset
-tests/          41 invariant tests, one per red line
+tests/          invariant tests + client-render smoke tests
 ```
 
 ---

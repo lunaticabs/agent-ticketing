@@ -133,7 +133,7 @@ moved on; do not retry" ends the loop.
 ## How this file was produced
 
 ```
-npm test              # 40 in-process invariant tests, incl. every red line
+npm test              # 45 tests: every red line, plus client-render smoke tests
 npm run e2e           # 9 live HTTP checks: six demo beats + this failure matrix
                       #   + a real two-socket concurrency race
 npm run mcp-check     # 10 live MCP checks, incl. claim-without-approval
