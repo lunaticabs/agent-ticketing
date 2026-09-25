@@ -150,7 +150,7 @@ export default function AdminPage() {
             </Button>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-[var(--color-muted)]">
-            <div>idp<br /><span className="text-[var(--color-text)]">{health.data?.idp.mode}</span></div>
+            <div>idp<br /><span className="text-[var(--color-text)]">{health.data?.idp?.mode}</span></div>
             <div>policy<br /><span className="text-[var(--color-text)]">{health.data?.event?.policy ?? '—'}</span></div>
             <div>mode<br /><span className="text-[var(--color-text)]">{health.data?.event?.lotteryMode ?? '—'}</span></div>
           </div>

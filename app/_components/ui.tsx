@@ -61,14 +61,24 @@ export async function call<T = unknown>(
  *
  * `initial` lets a server component hand over a first frame, so a projector
  * shows real numbers immediately instead of a "connecting…" placeholder while
- * the first poll is in flight. The interval then takes over as normal.
+ * the first poll is in flight.
+ *
+ * `url` may be **null**, which suspends polling entirely and leaves `data` at
+ * its initial value. That is not a convenience — it is a correctness
+ * requirement. The console used to poll `/api/health` as a placeholder while it
+ * was deciding whether anyone was signed in, and stored the result in a variable
+ * typed as the queue-status payload. Every nested read then walked off a health
+ * response and threw, for every visitor who was not signed in. Suspending the
+ * poll is what makes "this variable only ever holds a status payload" true
+ * rather than merely intended.
  */
-export function usePoll<T>(url: string, intervalMs = 1000, initial: T | null = null) {
+export function usePoll<T>(url: string | null, intervalMs = 1000, initial: T | null = null) {
   const [data, setData] = useState<T | null>(initial);
   const [error, setError] = useState<ApiError | null>(null);
   const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
+    if (!url) return;
     try {
       const next = await call<T>(url);
       if (mounted.current) {
@@ -82,13 +92,21 @@ export function usePoll<T>(url: string, intervalMs = 1000, initial: T | null = n
 
   useEffect(() => {
     mounted.current = true;
+    if (!url) {
+      // Suspended: clear anything a previous url left behind, so a stale
+      // payload can never masquerade as the current one.
+      setData(initial);
+      return () => {
+        mounted.current = false;
+      };
+    }
     void refresh();
     const timer = setInterval(() => void refresh(), intervalMs);
     return () => {
       mounted.current = false;
       clearInterval(timer);
     };
-  }, [refresh, intervalMs]);
+  }, [refresh, intervalMs, url, initial]);
 
   return { data, error, refresh };
 }

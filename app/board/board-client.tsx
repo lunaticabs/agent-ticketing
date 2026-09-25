@@ -167,7 +167,7 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
   // Recomputed locally every 200ms so the countdown is smooth even though the
   // snapshot arrives once a second.
   const soonestDeadline = useMemo(() => {
-    const deadlines = (data?.slots.items ?? [])
+    const deadlines = (data?.slots?.items ?? [])
       .filter((s) => s.state === 'ALLOCATED' && s.approvalDeadline)
       .map((s) => s.approvalDeadline as number);
     return deadlines.length ? Math.min(...deadlines) : null;

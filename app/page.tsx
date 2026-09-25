@@ -86,7 +86,13 @@ export default function ConsolePage() {
   const [meta, setMeta] = useState<{ action: string; signal: string } | null>(null);
   const [transferLink, setTransferLink] = useState<string | null>(null);
 
-  const status = usePoll<Status & { ok: true }>(signedIn ? '/api/queue/status' : '/api/health', 1000);
+  // `null` while we are still deciding, and while signed out. This variable must
+  // only ever hold a queue-status payload: treating a health response as one is
+  // what crashed the console for every signed-out visitor.
+  const status = usePoll<Status & { ok: true }>(
+    signedIn === true ? '/api/queue/status' : null,
+    1000,
+  );
 
   const note = useCallback((line: string) => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 40));
@@ -225,8 +231,6 @@ export default function ConsolePage() {
       } else if (res.url) {
         window.location.href = res.url;
       }
-      // The approval id is what the gate wants; the runner prints the same value.
-      console.log('approvalId', res.approvalId);
     });
 
   const claim = () =>
@@ -268,7 +272,7 @@ export default function ConsolePage() {
     return Math.max(0, deadline - Date.now());
   }, [approval, status.data]);
 
-  const idpMode = health.data?.idp.mode ?? 'oidc';
+  const idpMode = health.data?.idp?.mode ?? 'oidc';
 
   return (
     <main className="mx-auto max-w-5xl p-6">
@@ -299,12 +303,14 @@ export default function ConsolePage() {
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {/* ── Identity ─────────────────────────────────────────────── */}
         <Card title="1 · identity">
-          {signedIn === false ? (
+          {signedIn === null ? (
+            <p className="text-sm text-[var(--color-muted)]">checking your session…</p>
+          ) : signedIn === false ? (
             <>
               <p className="text-sm text-[var(--color-muted)]">
                 {idpMode === 'local'
                   ? 'No World ID credentials are configured, so the local fallback will simulate the consent screen. The gate downstream is unchanged.'
-                  : `Sign in against ${health.data?.idp.issuer ?? 'the sandbox IdP'}. The browser only receives a URL; the server holds the secret.`}
+                  : `Sign in against ${health.data?.idp?.issuer ?? 'the sandbox IdP'}. The browser only receives a URL; the server holds the secret.`}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button tone="brand" onClick={startLink} disabled={busy}>
@@ -331,9 +337,9 @@ export default function ConsolePage() {
               <Row label="vip" value={status.data?.vip ? 'yes' : 'no'} />
               <Row
                 label="inbound received"
-                value={`${status.data?.inbound.used ?? 0} / ${status.data?.inbound.cap ?? 0}`}
+                value={`${status.data?.inbound?.used ?? 0} / ${status.data?.inbound?.cap ?? 0}`}
               />
-              {status.data?.grants.map((g) => (
+              {status.data?.grants?.map((g) => (
                 <Row key={g.id} label="grant" value={g.scope} />
               ))}
               <Button
@@ -362,27 +368,29 @@ export default function ConsolePage() {
 
         {/* ── Queue ────────────────────────────────────────────────── */}
         <Card title="2 · queue">
-          {signedIn ? (
+          {signedIn === null ? (
+            <p className="text-sm text-[var(--color-muted)]">checking your session…</p>
+          ) : signedIn ? (
             <>
               <div className="grid grid-cols-3 gap-2 text-center">
-                <Metric label="in queue" value={status.data?.queue.total ?? 0} />
-                <Metric label="your rank" value={status.data?.queue.lotteryRank ?? '—'} />
-                <Metric label="arrival #" value={status.data?.queue.arrivalSeq ?? '—'} />
+                <Metric label="in queue" value={status.data?.queue?.total ?? 0} />
+                <Metric label="your rank" value={status.data?.queue?.lotteryRank ?? '—'} />
+                <Metric label="arrival #" value={status.data?.queue?.arrivalSeq ?? '—'} />
               </div>
               <p className="mt-3 text-xs text-[var(--color-muted)]">
                 Rank comes from the draw, not from arrival. Arrival order is recorded only so the
                 FCFS control mode has something to sort by.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {!status.data?.queue.joined && (
+                {!status.data?.queue?.joined && (
                   <Button tone="live" onClick={join} disabled={busy}>
                     Join the queue
                   </Button>
                 )}
-                {status.data?.queue.joined && !status.data?.queue.lotteryRank && (
+                {status.data?.queue?.joined && !status.data?.queue?.lotteryRank && (
                   <Badge tone="warn">waiting for the draw</Badge>
                 )}
-                {status.data?.queue.allocatedAt && <Badge tone="live">you were served</Badge>}
+                {status.data?.queue?.allocatedAt && <Badge tone="live">you were served</Badge>}
               </div>
             </>
           ) : (
@@ -392,9 +400,9 @@ export default function ConsolePage() {
 
         {/* ── Allocation / authorization ───────────────────────────── */}
         <Card title="3 · slot handover" className="md:col-span-2">
-          {!status.data?.allocation.length ? (
+          {!status.data?.allocation?.length ? (
             <p className="text-sm text-[var(--color-muted)]">
-              {status.data?.holding.length
+              {status.data?.holding?.length
                 ? 'You already hold a confirmed slot.'
                 : 'No slot is allocated to you right now.'}
             </p>
@@ -489,7 +497,7 @@ export default function ConsolePage() {
 
         {/* ── Held slots / transfer ─────────────────────────────────── */}
         <Card title="4 · held slots" className="md:col-span-2">
-          {!status.data?.holding.length ? (
+          {!status.data?.holding?.length ? (
             <p className="text-sm text-[var(--color-muted)]">Nothing confirmed yet.</p>
           ) : (
             <ul className="space-y-2">
