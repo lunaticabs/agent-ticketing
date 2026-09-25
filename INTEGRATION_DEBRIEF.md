@@ -128,6 +128,43 @@ auth, and no OAuth surface.
 **Suggested fix**: name the second one something that is not "sandbox". It is a
 *deployment*; the word is doing double duty in a domain that already overloads it.
 
+### 2.3b 🟠 The guide's callback rules and the portal's disagree, and the error names no field
+
+**Reproduction**
+
+1. Read the `oidc` guide: *"Use HTTPS callbacks for production and sandbox. Local,
+   test, and staging also accept registered HTTP loopback callbacks (`localhost`
+   or a loopback IP)."* The second sentence reads as permission to register
+   `http://localhost:3000/api/auth/world/callback` against this environment.
+2. Open `https://sandbox.auth.world.org/portal` and submit exactly that.
+3. The form returns **"Check the values and try again."** — in red, at the bottom,
+   naming no field.
+
+**Expected**: a loopback HTTP callback is accepted here, so a laptop-only
+integration needs no TLS.
+
+**Actual**: HTTPS is required regardless. The form's own label says so
+(*"Use exact HTTPS callback URLs, one per line"*) but the guide's "local, test,
+and staging" clause is describing *other* deployments, not this one.
+
+**Impact**: the message points at nothing, so the natural next guesses are the
+app name, the optional logo URL, or the authentication method — none of which are
+the problem. The authentication-method field also warns *"This cannot be changed
+later"*, which raises the stakes on guessing. Our team spent a round trip on this
+after having already written in `SPIKE_NOTES.md` that HTTP loopback was fine.
+
+**Suggested fix**: either accept loopback HTTP on this environment as the guide
+implies, or make the validation error name the field — *"Redirect URIs must use
+https://"* would have ended it immediately. The generic message is the whole
+problem; the requirement itself is reasonable.
+
+**Cost of the fix on our side**: `npm run dev:https`. The one-line version
+(`next dev --experimental-https`) is a trap — it downloads mkcert into
+`~/Library/Caches`, and where that path is unwritable it **fails and silently
+falls back to HTTP**, so the server comes up looking healthy and the mismatch
+only surfaces later as an `invalid_request` at the authorization endpoint. The
+script generates the certificate itself and refuses to fall back.
+
 ### 2.4 🟡 `acr_values` is advisory, and the docs are honest about it but easy to miss
 
 > *"`acr_values` — Voluntary preferences. Unsupported values do not force an
@@ -186,6 +223,7 @@ as it did:
 | # | Missing | Impact | Workaround |
 |---|---|---|---|
 | 1 | **Agent-completable client registration** | the track's core integration cannot be finished without a human (§2.1) | local fallback IdP; real IdP path implemented and dormant |
+| 1b | **A callback-scheme rule that matches the portal** | the guide reads as permitting loopback HTTP; the portal refuses it, with an error that names no field (§2.3b) | `npm run dev:https` with a self-signed certificate |
 | 2 | **Action-scoped one-time key** (an OIDC equivalent of the IDKit nullifier) | every relying party must reconstruct `human × action` itself, and most will not realise it (§2.2) | `sha256(domain \| iss \| sub \| action \| signal)` + `UNIQUE (bound_action, continuity_id)` |
 | 3 | **A sandbox capability document** | teams cannot tell which advertised behaviours are enforced vs advisory | read every guide end to end; validate achieved values rather than requested ones |
 | 4 | **An `SKILL.md` for the sandbox path** | `https://world.id/SKILL.md` is an excellent agent skill for the IDKit/World ID 4.0 production path. There is no equivalent for the Human Continuity IdP — the guidance exists as six MCP guides, which an agent must know to fetch. | we read the guides over MCP manually; an agent that does not know `/mcp` exists has nothing to read |

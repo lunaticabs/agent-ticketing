@@ -6,6 +6,7 @@
   "description": "Presence \u2014 agent queueing with fresh human authorization at the moment a slot is handed over.",
   "scripts": {
     "dev": "next dev -p 3000",
+    "dev:https": "bash scripts/dev-https.sh",
     "build": "next build",
     "start": "next start -p 3000",
     "seed": "tsx db/seed.ts",

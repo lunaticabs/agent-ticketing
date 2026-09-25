@@ -52,9 +52,19 @@ ENABLE_DEV_ROUTES=1 npm run dev     # dev routes power the demo props
 
 Open **http://localhost:3000/board** — that is the demo.
 
+> **Connecting the real IdP instead?** Use `ENABLE_DEV_ROUTES=1 npm run dev:https`.
+> The sandbox portal refuses an `http://` callback — its registration form says
+> *"Use exact HTTPS callback URLs"* and rejects a loopback `http://` URL with a
+> generic *"Check the values and try again."* `dev:https` generates a self-signed
+> certificate for `localhost`, starts Next on TLS, and points
+> `PRESENCE_PUBLIC_URL` and `WORLDID_REDIRECT_URI` at it so every absolute URL the
+> app builds matches. Register `https://localhost:3000/api/auth/world/callback`.
+> See SPIKE_NOTES.md S-0.
+
 | Command | What it does |
 |---|---|
 | `npm run dev` | the app (UI + API) |
+| `npm run dev:https` | the same over TLS — **required if you register a real OIDC client** |
 | `npm run seed` / `npm run reset` | create / recreate the demo event |
 | `npm run agent` | **the agent, as its own process** |
 | `npm run mcp` | the MCP server (stdio) |
@@ -147,8 +157,8 @@ What the fallback does and does not do:
 | ❌ | **does not prove humanness.** There is no World ID proof behind it. |
 
 To switch to the real IdP, set `WORLDID_CLIENT_ID` and `WORLDID_CLIENT_SECRET` in
-`.env.local`. **No code changes** — `idpMode()` picks it up and the banner
-disappears.
+`.env.local`, and run over HTTPS (`npm run dev:https`) so the registered callback
+matches. **No code changes** — `idpMode()` picks it up and the banner disappears.
 
 ### ⚠️ Disclosed demo bypass
 

@@ -23,6 +23,10 @@ next-env.d.ts
 /db/*.db-wal
 /var/
 
+# ── Local TLS ───────────────────────────────────────────────────────────────
+# Self-signed certificate for `npm run dev:https`. Contains a PRIVATE KEY.
+/certificates/
+
 # ── OS / editor ─────────────────────────────────────────────────────────────
 .DS_Store
 *.pem
