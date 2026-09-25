@@ -161,6 +161,27 @@ function findKey(
  * person sitting in front of the console is not acting through a delegated
  * credential.
  */
+export interface Caller {
+  continuityId: string;
+  /** The human in a browser, or a program holding their delegated credential. */
+  actor: 'human' | 'agent';
+  scope: string[];
+}
+
+/**
+ * Resolve the caller, keeping *how* they authenticated.
+ *
+ * `resolveCaller` has always computed this; the wrapper discarded it, which left
+ * the system unable to answer the one question its pitch turns on — was this
+ * action taken by the human or by their agent? The distinction is now carried
+ * through to the audit trail.
+ */
+export function requireCaller(req: NextRequest, scope?: AgentScope): Caller {
+  const caller = resolveCaller(req, scope);
+  const continuityId = requireContinuity(req, scope);
+  return { continuityId, actor: caller.via === 'agent-token' ? 'agent' : 'human', scope: caller.scope };
+}
+
 export function requireContinuity(req: NextRequest, scope?: AgentScope): string {
   const caller = resolveCaller(req, scope);
   if (!caller.continuityId) {

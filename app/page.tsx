@@ -36,6 +36,7 @@ interface OpenApproval {
   slotId: string | null;
   mode: string;
   consentUrl: string | null;
+  requestedVia: 'human' | 'agent';
   requestedAt: number;
   completedAt: number | null;
   verifiedAt: number | null;
@@ -546,6 +547,9 @@ export default function ConsolePage() {
                   <Badge tone={approval.state === 'PENDING' ? 'warn' : approval.state === 'CONSUMED' ? 'brand' : 'live'}>
                     {approval.state}
                   </Badge>
+                  {outstanding?.requestedVia === 'agent' && (
+                    <Badge tone="brand">requested by your agent</Badge>
+                  )}
                   <span className="mono text-xs">{approval.approvalId}</span>
                 </div>
                 {approval.state === 'PENDING' && approvalRemaining != null && (

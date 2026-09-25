@@ -300,6 +300,7 @@ test('the board renders its first frame and survives its poll', async () => {
     approvals: [],
     transfers: { total: 0, open: 0, completed: 0, expired: 0, rejectedAttempts: 0, items: [] },
     inbound: [],
+    actors: { human: 0, agent: 0, system: 0 },
     humans: { total: 0, distinctInQueue: 0 },
     drawVerification: { settled: false, matches: null, checked: 0, seed: null },
     security: { consumedProofs: 0, protectedActionsExecuted: 0, totalRefusals: 0, refusals: {} },

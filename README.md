@@ -33,6 +33,13 @@ Two claims, each demonstrable on stage in under three minutes:
    reference, with a reused one, or with one whose parameters have been changed.
    All four are refused, each with a different machine-readable reason.
 
+3. **You can see who did what.** Every action is attributed to the human or to
+   the agent holding their delegated credential, and the board reports the tally.
+   Driving the real agent through a purchase reads: `agent` queued, `agent`
+   asked, `human` answered on their phone, `agent` executed. That is the claim
+   this project makes, and it is legible on a projector rather than asserted in a
+   README.
+
 **Slots are locked.** There is no transfer, no secondary circulation and no
 policy knob, because a slot cannot move off the human who won it. That is the
 strongest anti-scalping position available and it is the one this build takes;

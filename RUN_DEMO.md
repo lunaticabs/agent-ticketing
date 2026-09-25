@@ -96,8 +96,24 @@ time — it comes back `not_fresh`).
 
 The terminal then walks all four stages and confirms the slot.
 
-> "The agent did the waiting. The human only had to be there for the ten seconds
-> that mattered."
+**Now point at the board's audit ticker.** It reads, in order:
+
+```
+[agent ] queue.joined          the agent queued
+[system] lottery.settled       the server drew
+[system] slot.allocated        the server allocated
+[agent ] approval.requested    the agent asked
+[human ] approval.completed    the human answered on their phone
+[system] approval.verified     the server verified
+[agent ] approval.executed     the agent executed
+[agent ] slot.confirmed        confirmed
+```
+
+The "by agent" counter at the top reads **4 agent, 1 human**.
+
+> "That is the whole claim, on the screen, in the order it happened. The agent did
+> the work. The human did exactly one thing — and it is the one thing an agent
+> cannot do."
 
 ## Beat 3 · Nobody answers → the slot moves on
 

@@ -1,4 +1,4 @@
-import { json, route, requireContinuity, readJson } from '@/lib/api';
+import { json, route, requireCaller, readJson } from '@/lib/api';
 import { executeClaim } from '@/lib/gate';
 import { primaryEvent } from '@/lib/humans';
 
@@ -26,7 +26,7 @@ import { primaryEvent } from '@/lib/humans';
  * the entire point of T-1.3 and T-3.4.
  */
 export const POST = route(async (req) => {
-  const continuityId = requireContinuity(req);
+  const caller = requireCaller(req);
   const body = await readJson(req);
 
   const { guardClientSuppliedEnvironment, guardForgedClientResult } = await import('@/lib/api');
@@ -41,10 +41,16 @@ export const POST = route(async (req) => {
         ? body.approvalRef
         : null;
 
-  const result = await executeClaim({ eventId, continuityId, approvalRef });
+  const result = await executeClaim({
+    eventId,
+    continuityId: caller.continuityId,
+    approvalRef,
+    actor: caller.actor,
+  });
 
   return json({
     ...result,
+    actor: caller.actor,
     stage: 'executed',
     note:
       'The server verified the approval itself: binding, freshness and one-time consumption ' +

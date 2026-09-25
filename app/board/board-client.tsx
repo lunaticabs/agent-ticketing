@@ -93,6 +93,7 @@ interface BoardState {
     items: SlotItem[];
   };
   approvals: ApprovalItem[];
+  actors: { human: number; agent: number; system: number };
   humans: { total: number; distinctInQueue: number };
   drawVerification: {
     settled: boolean;
@@ -114,6 +115,7 @@ interface BoardState {
     at: number;
     continuityShort: string | null;
     slotId: string | null;
+    actor: 'human' | 'agent' | 'system';
     payload: Record<string, unknown>;
   }[];
   highlight: {
@@ -229,7 +231,7 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
       </div>
 
       {/* ── Big numbers ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-px border-b border-[var(--color-line)] bg-[var(--color-line)] md:grid-cols-6">
+      <div className="grid grid-cols-2 gap-px border-b border-[var(--color-line)] bg-[var(--color-line)] md:grid-cols-7">
         <Big label="in queue" value={data.queue.total} detail={`${data.humans.distinctInQueue} distinct humans`} />
         <Big
           label="slots"
@@ -241,6 +243,12 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
           value={remaining == null ? '—' : formatSeconds(remaining)}
           detail={soonestDeadline ? 'approval window' : 'nothing allocated'}
           tone={remaining != null && remaining < 15_000 ? 'alert' : 'live'}
+        />
+        <Big
+          label="by agent"
+          value={data.actors.agent}
+          detail={`${data.actors.human} by a human directly`}
+          tone="brand"
         />
         <Big label="deferrals" value={data.slots.deferrals} detail="slots passed on" tone="warn" />
         <Big label="refusals" value={data.security.totalRefusals} detail="blocked attempts" tone="alert" />
@@ -377,6 +385,17 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
                 <span className="mono truncate">{a.type}</span>
                 <span className="tnum opacity-70">{relative(a.at, data.serverNow)}</span>
               </div>
+              {/* Who acted. The whole claim is that an agent may act for a human,
+                  so the board says which of the two did each thing. */}
+              {a.actor !== 'system' && (
+                <div
+                  className={`text-[10px] font-bold tracking-wide uppercase ${
+                    a.actor === 'agent' ? 'text-[var(--color-brand)]' : 'text-[var(--color-live)]'
+                  }`}
+                >
+                  {a.actor}
+                </div>
+              )}
               <div className="mono truncate opacity-70">
                 {a.continuityShort ?? '—'}
                 {typeof a.payload.note === 'string' ? ` · ${a.payload.note}` : ''}
@@ -400,13 +419,14 @@ function Big({
   label: string;
   value: string | number;
   detail?: string;
-  tone?: 'neutral' | 'live' | 'warn' | 'alert';
+  tone?: 'neutral' | 'live' | 'warn' | 'alert' | 'brand';
 }) {
   const color = {
     neutral: 'text-[var(--color-text)]',
     live: 'text-[var(--color-live)]',
     warn: 'text-[var(--color-warn)]',
     alert: 'text-[var(--color-alert)]',
+    brand: 'text-[var(--color-brand)]',
   }[tone];
   return (
     <div className="bg-[var(--color-panel)] px-4 py-3">

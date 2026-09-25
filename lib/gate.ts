@@ -182,6 +182,7 @@ export function describeClaimTarget(eventId: string, continuityId: string): Clai
 export async function requestClaimApproval(
   eventId: string,
   continuityId: string,
+  requestedVia: 'human' | 'agent' = 'human',
 ): Promise<RequestApprovalResult & { target: ClaimTarget }> {
   const target = describeClaimTarget(eventId, continuityId);
 
@@ -196,6 +197,7 @@ export async function requestClaimApproval(
     // for one handover would be a bug waiting to happen.
     expiresAt: target.deadline,
     maxAgeSec: 0,
+    requestedVia,
   });
 
   return { ...result, target };
@@ -211,6 +213,8 @@ export interface ExecuteClaimInput {
    * believed. Accepts either an approval id or a World ID proof reference.
    */
   approvalRef: string | null | undefined;
+  /** Who is presenting the approval: the human, or the agent acting for them. */
+  actor?: 'human' | 'agent';
 }
 
 export interface ExecuteClaimSuccess {
@@ -233,6 +237,7 @@ export interface ExecuteClaimSuccess {
 
 export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteClaimSuccess> {
   const { eventId, continuityId } = input;
+  const actor = input.actor ?? 'human';
 
   // ── The gate's first act: refuse if no approval was presented at all ──
   if (!input.approvalRef || !input.approvalRef.trim()) {
@@ -240,6 +245,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
       type: 'gate.refused',
       continuityId,
       eventId,
+      actor,
       severity: 'alert',
       payload: {
         code: 'approval_required',
@@ -326,11 +332,12 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
     });
 
     confirmSlot(db, target.slotId, continuityId);
-    markExecuted(db, approval.id, {
-      slotId: target.slotId,
-      acquiredVia: 'lottery',
-      nullifier: verified.nullifier,
-    });
+    markExecuted(
+      db,
+      approval.id,
+      { slotId: target.slotId, acquiredVia: 'lottery', nullifier: verified.nullifier },
+      actor,
+    );
 
     const now = nowMs();
     audit({
@@ -338,6 +345,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
       continuityId,
       eventId,
       slotId: target.slotId,
+      actor,
       payload: {
         approvalId: approval.id,
         acquiredVia: 'lottery',

@@ -291,20 +291,61 @@ fallback's assertion. **Supplying `WORLDID_CLIENT_ID` and
 `WORLDID_CLIENT_SECRET` is the only step remaining**, and it requires no code
 change — `idpMode()` switches, and `worldid/local.ts` stops being reachable.
 
-### One functional gap worth naming
+### One documented gap, withdrawn
 
-The relying party never calls the IdP's authorization endpoint at the *primary
-allocation* stage. A drawn slot is confirmed with a World ID step-up bound to
-`buy_slot:{event_id}`, which is the red-line-1 guarantee. But the *queue entry*
-itself was created from a link-flow session established earlier, and this build
-does not re-assert humanness at the moment of allocation. Doing so would be a
-second `max_age=0` step-up per allocation, and it is squarely within the
-implementation already here — `startFreshAuth` takes an `action` and a `signal`
-and does not care what they name.
+An earlier draft of this file claimed a gap: "the relying party never re-asserts
+humanness at the moment of allocation — the queue entry was created from a
+link-flow session established earlier."
 
-It was left out for time, and it is the first thing to add.
+On re-reading the code that claim does not hold, and it is worth saying so rather
+than leaving a wrong finding in a document a judge will read.
 
----
+  · **Joining the queue is *supposed* to use a persistent proof.** It is the one
+    call site where "this is a verified, unique human" is the whole question, and
+    a link-flow session answers exactly that. Re-proving presence to enter a queue
+    would be a step-up with nothing to protect.
+  · **The allocation is already gated by a fresh proof.** The moment a slot is
+    handed over, `POST /api/slot/request` opens an authorization with
+    `max_age=0`, and `executeClaim` re-checks freshness at execution time. That is
+    the requirement, and it is implemented.
+
+What the earlier draft had actually noticed was a **reporting** gap, not a
+protocol one: the system could not say *who* did any of it. See §5b.
+
+## 5b. The finding that replaced it: the actor was computed and thrown away
+
+`resolveCaller` has always distinguished a browser session from an agent bearer
+token — `via: 'cookie' | 'agent-token'` — and `requireContinuity` discarded it on
+the way out. So the system could not answer the one question its pitch turns on:
+
+> an agent bought this, legally, on a human's behalf
+
+Every action was attributed to a continuity id and nothing else. "The agent did
+it" and "the human did it" were the same row.
+
+It is now recorded at the point of action, on both `audit_event.actor` and
+`approval.requested_via`, and the board reports the tally. Driving the real agent
+through a full purchase produces:
+
+```
+[agent ] queue.joined          the agent queued
+[system] lottery.settled       the server drew
+[system] slot.allocated        the server allocated
+[agent ] approval.requested    the agent asked
+[human ] approval.completed    the human answered on their phone
+[system] approval.verified     the server verified
+[agent ] executed              the agent executed
+[agent ] slot.confirmed        confirmed
+```
+
+Four agent actions, one human action, five server actions — the claim, readable on
+a projector, in the order it happened.
+
+One attribution detail is worth recording because it was wrong at first: stage 2
+was attributed to `system`, on the reasoning that the server is what notices the
+IdP's answer. That produced a board reading "3 agent, 0 human" for a flow in which
+a person had just picked up their phone. The human is the only party who can
+complete stage 2, so the human is who it is filed under.
 
 ## 6. Reproduction
 

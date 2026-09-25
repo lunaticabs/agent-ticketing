@@ -1,4 +1,4 @@
-import { json, route, requireContinuity, readJson } from '@/lib/api';
+import { json, route, requireCaller, readJson } from '@/lib/api';
 import { requestClaimApproval } from '@/lib/gate';
 import { primaryEvent } from '@/lib/humans';
 
@@ -14,16 +14,17 @@ import { primaryEvent } from '@/lib/humans';
  * transaction rather than accepting a session established earlier.
  */
 export const POST = route(async (req) => {
-  const continuityId = requireContinuity(req);
+  const caller = requireCaller(req);
   const body = await readJson(req);
   const { guardClientSuppliedEnvironment } = await import('@/lib/api');
   guardClientSuppliedEnvironment(body);
 
   const eventId = typeof body.eventId === 'string' ? body.eventId : primaryEvent().id;
-  const requested = await requestClaimApproval(eventId, continuityId);
+  const requested = await requestClaimApproval(eventId, caller.continuityId, caller.actor);
 
   return json({
     ok: true,
+    actor: caller.actor,
     approvalId: requested.approvalId,
     requestId: requested.requestId,
     mode: requested.mode,

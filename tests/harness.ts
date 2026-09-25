@@ -42,9 +42,13 @@ export function human(handle: string): string {
 }
 
 /** Join, settle the draw, allocate. The ordinary path into a slot. */
-export function queueAndDraw(eventId: string, handles: string[]): string[] {
+export function queueAndDraw(
+  eventId: string,
+  handles: string[],
+  actor: 'human' | 'agent' = 'human',
+): string[] {
   const ids = handles.map((h) => human(h));
-  for (const id of ids) joinQueue(eventId, id);
+  for (const id of ids) joinQueue(eventId, id, actor);
   settleLottery(eventId);
   sweep(eventId);
   return ids;

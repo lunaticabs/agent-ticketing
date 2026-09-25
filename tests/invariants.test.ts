@@ -27,6 +27,7 @@ import {
 import { PresenceError } from '../lib/errors';
 import { consumeProof, findConsumed } from '../lib/consume';
 import { requestClaimApproval, executeClaim, purchaseAction, purchaseSignal } from '../lib/gate';
+import { actorTally } from '../lib/audit';
 import { settleLottery, listQueue, recomputeDrawOrder, joinQueue } from '../lib/queue';
 import {
   listSlots,
@@ -35,7 +36,7 @@ import {
   allocatedSlotsFor,
   ensureSlots,
 } from '../lib/slots';
-import { getApproval, syncApproval, verifyApproval } from '../lib/approval';
+import { getApproval, openApprovalViews, syncApproval, verifyApproval } from '../lib/approval';
 import { issueGrant, revokeGrant, activeGrant } from '../lib/grants';
 import { guardClientSuppliedEnvironment, guardForgedClientResult } from '../lib/api';
 import { settleLottery as _settle } from '../lib/queue';
@@ -386,6 +387,113 @@ test('RED LINE 6 — changing the action or the signal is refused', async () => 
     signal: purchaseSignal(event.id, alice),
   });
   assert.equal(right.ok, true);
+});
+
+test('a stale database is refused with advice, not a bare column error', async () => {
+  // `CREATE TABLE IF NOT EXISTS` creates missing tables but never adds columns,
+  // so a database written by an earlier build keeps its old shape. The failure
+  // then surfaces somewhere unrelated as `no such column: actor` — and worse, the
+  // schema file's `CREATE INDEX ... ON audit_event (actor)` blows up inside
+  // `exec` before any check that runs afterwards can explain itself. Hence the
+  // check runs first.
+  const Database = (await import('better-sqlite3')).default;
+  const { assertSchemaCurrent } = await import('../lib/db');
+
+  const stale = new Database(':memory:');
+  stale.exec(`CREATE TABLE audit_event (id TEXT PRIMARY KEY, type TEXT NOT NULL)`);
+  assert.throws(
+    () => assertSchemaCurrent(stale),
+    (err: Error) => {
+      assert.match(err.message, /out of date/);
+      assert.match(err.message, /audit_event\.actor/);
+      assert.match(err.message, /npm run reset/, 'the message must say what to do');
+      return true;
+    },
+  );
+  stale.close();
+
+  // And a database that has never been touched is not mistaken for a stale one —
+  // on a fresh file the tables do not exist yet, and the schema is about to
+  // create them.
+  const fresh = new Database(':memory:');
+  assert.doesNotThrow(() => assertSchemaCurrent(fresh));
+  fresh.close();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  The agent/human distinction — the fact the pitch rests on
+// ════════════════════════════════════════════════════════════════════════════
+
+test('the audit trail records whether a human or an agent acted', async () => {
+  // "An agent legally buys a ticket on a human's behalf" is the claim. It is only
+  // checkable if the system keeps the distinction, and `resolveCaller` has always
+  // computed it — the wrapper used to throw it away.
+  reset();
+  const event = freshEvent({ slots: 2 });
+  const alice = human('actor-alice');
+
+  joinQueue(event.id, alice, 'agent');
+
+  const joined = getDb()
+    .prepare(`SELECT actor FROM audit_event WHERE type = 'queue.joined' AND continuity_id = ?`)
+    .get(alice) as { actor: string };
+  assert.equal(joined.actor, 'agent', 'an agent joining must be recorded as such');
+
+  // And the same action taken by the human is recorded differently.
+  const bob = human('actor-bob');
+  joinQueue(event.id, bob, 'human');
+  const joinedByHand = getDb()
+    .prepare(`SELECT actor FROM audit_event WHERE type = 'queue.joined' AND continuity_id = ?`)
+    .get(bob) as { actor: string };
+  assert.equal(joinedByHand.actor, 'human');
+
+  const tally = actorTally(event.id);
+  assert.equal(tally.agent, 1);
+  assert.equal(tally.human, 1);
+});
+
+test('an approval requested by an agent says so, all the way to the gate', async () => {
+  reset();
+  const event = freshEvent({ slots: 2 });
+  // The whole loop, driven by the agent: it queues, it asks, the human answers,
+  // it executes.
+  const [alice] = queueAndDraw(event.id, ['actor-claim'], 'agent');
+
+  const request = await requestClaimApproval(event.id, alice, 'agent');
+  const row = getApproval(request.approvalId)!;
+  assert.equal(row.requested_via, 'agent', 'the approval must remember who asked');
+
+  const views = await openApprovalViews(alice);
+  assert.equal(views[0]?.requestedVia, 'agent', 'and the status endpoint must report it');
+
+  await approveLocally(request.requestId, 'actor-claim');
+  const claim = await executeClaim({
+    eventId: event.id,
+    continuityId: alice,
+    approvalRef: request.approvalId,
+    actor: 'agent',
+  });
+  assert.equal(claim.ok, true);
+
+  const actorOf = (type: string) =>
+    (
+      getDb()
+        .prepare(`SELECT actor FROM audit_event WHERE type = ? AND continuity_id = ?`)
+        .get(type, alice) as { actor: string } | undefined
+    )?.actor;
+
+  // The four-stage loop, attributed stage by stage. This is the demo's whole
+  // argument in four rows: the agent asked, the human answered, the server
+  // checked, the agent executed.
+  assert.equal(actorOf('approval.requested'), 'agent', 'stage 1 — the agent asked');
+  assert.equal(actorOf('approval.completed'), 'human', 'stage 2 — the human answered');
+  assert.equal(actorOf('approval.verified'), 'system', 'stage 3 — the server checked');
+  assert.equal(actorOf('approval.executed'), 'agent', 'stage 4 — the agent executed');
+  assert.equal(actorOf('slot.confirmed'), 'agent', 'and the slot is confirmed by the agent');
+
+  const tally = actorTally(event.id);
+  assert.equal(tally.human, 1, 'exactly one human action in this loop');
+  assert.ok(tally.agent >= 3, `the agent did the rest; got ${JSON.stringify(tally)}`);
 });
 
 // ════════════════════════════════════════════════════════════════════════════

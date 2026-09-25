@@ -16,7 +16,7 @@ import { listEvents, primaryEvent, type EventRow } from './humans';
 import { listQueue, queueStats, recomputeDrawOrder } from './queue';
 import { listSlots, slotSummary, sweep } from './slots';
 import { listApprovals } from './approval';
-import { recentAudit } from './audit';
+import { actorTally, recentAudit } from './audit';
 import { idpMode, WORLDID_ISSUER } from '../worldid/config';
 
 export interface BoardHighlight {
@@ -116,6 +116,9 @@ export function boardState(eventId?: string) {
         executed: a.executed_at,
       },
     })),
+    // Who did the work. The pitch is "an agent bought this on a human's behalf",
+    // so the board states it rather than leaving a judge to infer it.
+    actors: actorTally(event.id),
     humans: {
       total: (getDb().prepare(`SELECT COUNT(*) AS n FROM human`).get() as { n: number }).n,
       distinctInQueue: new Set(entries.map((e) => e.continuity_id)).size,
@@ -129,6 +132,7 @@ export function boardState(eventId?: string) {
       at: r.at,
       continuityShort: r.continuity_id ? shortId(r.continuity_id) : null,
       slotId: r.slot_id,
+      actor: r.actor,
       payload: safeParse(r.payload),
     })),
     highlight,

@@ -123,6 +123,10 @@ CREATE TABLE IF NOT EXISTS approval (
   slot_id               TEXT REFERENCES slot(id) ON DELETE CASCADE,
   nonce                 TEXT NOT NULL,
   request_id            TEXT NOT NULL,
+  -- Who asked for this authorization. An agent requesting one on the human's
+  -- behalf is the normal case; a browser requesting one is the human acting
+  -- directly. Both are legitimate, and the difference is worth keeping.
+  requested_via         TEXT NOT NULL DEFAULT 'human' CHECK (requested_via IN ('human','agent')),
   state                 TEXT NOT NULL DEFAULT 'PENDING'
                           CHECK (state IN ('PENDING','APPROVED','CONSUMED','DENIED','EXPIRED')),
   proof_ref             TEXT,
@@ -199,6 +203,11 @@ CREATE TABLE IF NOT EXISTS audit_event (
   slot_id        TEXT,
   type           TEXT NOT NULL,
   severity       TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','warn','alert')),
+  -- WHO acted: the human in a browser, or a program holding the human's
+  -- delegated credential. This is the single fact the project's pitch rests on
+  -- — "an agent bought this, legally, on a human's behalf" — so it is recorded
+  -- on every row rather than inferred later from the transport.
+  actor          TEXT NOT NULL DEFAULT 'system' CHECK (actor IN ('human','agent','system')),
   payload        TEXT NOT NULL DEFAULT '{}',
   at             INTEGER NOT NULL
 );
@@ -206,6 +215,7 @@ CREATE TABLE IF NOT EXISTS audit_event (
 CREATE INDEX IF NOT EXISTS idx_audit_at      ON audit_event (at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_human   ON audit_event (continuity_id, at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_type    ON audit_event (type, at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_actor   ON audit_event (actor, at DESC);
 
 -- ── AuthRequest ─────────────────────────────────────────────────────────────
 -- One row per World ID interaction. Lives in the DB (not in memory) because the

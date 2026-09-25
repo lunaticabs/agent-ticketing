@@ -576,11 +576,12 @@ test('journey · the board renders a queue, slots and a countdown from one poll'
         stages: { requested: Date.now(), completed: null, verified: null, executed: null },
       },
     ],
+    actors: { human: 3, agent: 7, system: 1 },
     humans: { total: 2, distinctInQueue: 2 },
     drawVerification: { settled: true, matches: true, checked: 2, seed: 'seed123', algorithm: 'sha256(seed||id)' },
     security: { consumedProofs: 1, protectedActionsExecuted: 1, totalRefusals: 3, refusals: {} },
     audit: [
-      { id: 'a1', type: 'slot.approval_expired', severity: 'warn', at: Date.now(), continuityShort: 'aaaa1111', slotId: 'slot_2', payload: { note: 'no decision' } },
+      { id: 'a1', type: 'slot.approval_expired', severity: 'warn', at: Date.now(), continuityShort: 'aaaa1111', slotId: 'slot_2', actor: 'system', payload: { note: 'no decision' } },
     ],
     highlight: { kind: 'deferral', at: Date.now(), slotId: 'slot_2', continuityId: 'cid_b', message: 'deferred to the next candidate' },
   });

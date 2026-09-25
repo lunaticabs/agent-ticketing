@@ -45,6 +45,7 @@ export interface ApprovalRow {
   nullifier: string | null;
   auth_time: number | null;
   fail_reason: string | null;
+  requested_via: 'human' | 'agent';
   requested_at: number;
   completed_at: number | null;
   verified_at: number | null;
@@ -92,6 +93,8 @@ export interface RequestApprovalInput {
    */
   expiresAt?: number;
   maxAgeSec?: number;
+  /** Who asked. An agent requesting on the human's behalf is the normal case. */
+  requestedVia?: 'human' | 'agent';
 }
 
 export interface RequestApprovalResult {
@@ -127,13 +130,14 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
 
   const expiresAt = Math.min(started.expiresAt, input.expiresAt ?? started.expiresAt);
   const id = newId('apv');
+  const requestedVia = input.requestedVia ?? 'human';
 
   getDb()
     .prepare(
       `INSERT INTO approval
          (id, kind, bound_action, bound_signal, continuity_id, event_id, slot_id,
-          nonce, request_id, state, requested_at, created_at, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,'PENDING',?,?,?)`,
+          nonce, request_id, requested_via, state, requested_at, created_at, expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,'PENDING',?,?,?)`,
     )
     .run(
       id,
@@ -145,6 +149,7 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
       input.slotId ?? null,
       newId('nonce'),
       started.requestId,
+      requestedVia,
       nowMs(),
       nowMs(),
       expiresAt,
@@ -155,6 +160,7 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
     continuityId: input.continuityId,
     eventId: input.eventId ?? null,
     slotId: input.slotId ?? null,
+    actor: requestedVia,
     payload: {
       approvalId: id,
       requestId: started.requestId,
@@ -220,6 +226,10 @@ export async function syncApproval(approvalId: string): Promise<ApprovalRow> {
         continuityId: row.continuity_id,
         eventId: row.event_id,
         slotId: row.slot_id,
+        // Stage 2 is the human, and only the human. Attributing it to the server
+        // because the server noticed would erase the one part of the loop the
+        // agent cannot do — which is the entire argument.
+        actor: 'human',
         payload: {
           approvalId,
           requestId: row.request_id,
@@ -312,6 +322,7 @@ export interface OpenApprovalView {
   mode: 'oidc' | 'device' | 'local';
   /** Where the human goes to approve, while the request is still PENDING. */
   consentUrl: string | null;
+  requestedVia: 'human' | 'agent';
   requestedAt: number;
   completedAt: number | null;
   verifiedAt: number | null;
@@ -369,6 +380,7 @@ export async function openApprovalViews(continuityId: string): Promise<OpenAppro
       slotId: row.slot_id,
       mode: request?.mode ?? 'local',
       consentUrl: row.state === 'PENDING' ? (request?.authorize_url ?? null) : null,
+      requestedVia: row.requested_via,
       requestedAt: row.requested_at,
       completedAt: row.completed_at,
       verifiedAt: row.verified_at,
@@ -509,6 +521,7 @@ export function markExecuted(
   db: ReturnType<typeof getDb>,
   approvalId: string,
   detail: Record<string, unknown>,
+  actor: 'human' | 'agent' = 'human',
 ): void {
   db.prepare(`UPDATE approval SET state = 'CONSUMED', consumed_at = ?, executed_at = ? WHERE id = ?`).run(
     nowMs(),
@@ -521,6 +534,7 @@ export function markExecuted(
     continuityId: row?.continuity_id ?? null,
     eventId: row?.event_id ?? null,
     slotId: row?.slot_id ?? null,
+    actor,
     payload: { approvalId, scene: 'stage:4-executed', ...detail },
   });
 }

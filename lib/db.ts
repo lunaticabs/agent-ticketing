@@ -29,10 +29,49 @@ function open(): DB {
   // Wait rather than fail when another connection (agent process, sweeper) is
   // mid-write. The demo runs several processes against one file.
   db.pragma('busy_timeout = 5000');
+  // Checked BEFORE the schema is applied, not after. The schema file contains
+  // `CREATE INDEX ... ON audit_event (actor)`, which on an old table fails with
+  // a bare "no such column: actor" from deep inside `exec` — before a check that
+  // runs afterwards ever gets the chance to explain itself.
+  assertSchemaCurrent(db);
+
   if (fs.existsSync(SCHEMA_PATH)) {
     db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
   }
   return db;
+}
+
+/**
+ * Columns this build expects, beyond what `CREATE TABLE IF NOT EXISTS` can add.
+ *
+ * The schema is applied on every connection, but `IF NOT EXISTS` only creates
+ * missing *tables* — a database written by an earlier build keeps its old
+ * columns and fails later with `no such column: actor`, somewhere unrelated to
+ * the cause. The database is disposable by design (`npm run reset`), so the
+ * right answer is to say so plainly at connect time.
+ */
+const REQUIRED_COLUMNS: Record<string, string[]> = {
+  audit_event: ['actor'],
+  approval: ['requested_via'],
+};
+
+export function assertSchemaCurrent(db: DB): void {
+  const stale: string[] = [];
+  for (const [table, columns] of Object.entries(REQUIRED_COLUMNS)) {
+    const present = new Set(
+      (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name),
+    );
+    if (present.size === 0) continue; // table does not exist yet; the schema just made it
+    for (const column of columns) {
+      if (!present.has(column)) stale.push(`${table}.${column}`);
+    }
+  }
+  if (stale.length) {
+    throw new Error(
+      `database schema is out of date (missing ${stale.join(', ')}).\n` +
+        'The SQLite file is disposable — run:  npm run reset',
+    );
+  }
 }
 
 // Next.js dev mode re-evaluates modules on every hot reload. Cache the handle

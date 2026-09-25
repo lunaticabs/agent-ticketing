@@ -1,4 +1,4 @@
-import { json, route, requireContinuity } from '@/lib/api';
+import { json, route, requireCaller } from '@/lib/api';
 import { joinQueue, myEntry, queueLength, queueStats } from '@/lib/queue';
 import { primaryEvent, getEvent } from '@/lib/humans';
 import { sweep } from '@/lib/slots';
@@ -13,7 +13,7 @@ import { sweep } from '@/lib/slots';
  * anyone's odds.
  */
 export const POST = route(async (req) => {
-  const continuityId = requireContinuity(req);
+  const caller = requireCaller(req);
   const url = new URL(req.url);
   const eventId = url.searchParams.get('eventId') ?? primaryEvent().id;
 
@@ -23,13 +23,14 @@ export const POST = route(async (req) => {
   }
 
   sweep(eventId);
-  const result = joinQueue(eventId, continuityId);
+  const result = joinQueue(eventId, caller.continuityId, caller.actor);
 
   return json({
     ok: true,
     created: result.created,
     eventId,
-    continuityId,
+    continuityId: caller.continuityId,
+    actor: caller.actor,
     entryId: result.entry.id,
     arrivalSeq: result.entry.seq,
     lotteryRank: result.entry.lottery_rank,

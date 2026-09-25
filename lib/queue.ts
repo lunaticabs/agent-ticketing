@@ -59,7 +59,11 @@ export interface JoinResult {
  * existing entry instead of stacking duplicate rows, because otherwise a user
  * who refreshes the page would improve their odds.
  */
-export function joinQueue(eventId: string, continuityId: string): JoinResult {
+export function joinQueue(
+  eventId: string,
+  continuityId: string,
+  actor: 'human' | 'agent' = 'human',
+): JoinResult {
   const event = getEvent(eventId);
   if (!event) throw new PresenceError('event_not_found', `no event ${eventId}`);
 
@@ -106,6 +110,7 @@ export function joinQueue(eventId: string, continuityId: string): JoinResult {
       type: 'queue.joined',
       continuityId,
       eventId,
+      actor,
       payload: { seq: entry.seq, mode: event.lottery_mode },
     });
 
