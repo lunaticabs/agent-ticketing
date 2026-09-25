@@ -80,7 +80,25 @@ Press it. The same 24-account bot script runs twice.
 > everything. So arrival order decides nothing. Same script, same accounts,
 > advantage gone."
 
-## Beat 1.5 · The agent does the buying, over MCP ⭐️
+## Beat 1.5 · The draw says it is drawing
+
+After anyone joins, both the console and the board show a pulsing **draw in
+progress** with a live countdown and the entrant count — `● DRAW IN PROGRESS
+12.4s · 3 in the draw`.
+
+This matters more than it looks. The draw window is the one stretch where a
+correct system is indistinguishable from a frozen one: nothing changes for
+fifteen seconds and the rank column is empty. Two things were wrong before this
+existed — the UI had no close time to count down to, because the status endpoint
+returned *when the draw happened* (null while it was still pending) rather than
+when the window closes.
+
+> "The clock is the draw. Everyone who arrives before it hits zero gets the same
+> odds — which is why arriving first buys you nothing."
+
+---
+
+## Beat 1.6 · The agent does the buying, over MCP ⭐️
 
 `/admin` → **Tell the agent to buy a ticket**.
 

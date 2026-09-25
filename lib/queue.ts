@@ -266,6 +266,63 @@ export function recomputeDrawOrder(eventId: string): { entryId: string; rank: nu
   return withKeys.map((e, i) => ({ ...e, rank: i + 1 }));
 }
 
+export interface LotteryWindow {
+  mode: EventRow['lottery_mode'];
+  drawn: boolean;
+  drawnAt: number | null;
+  /** When the first person joined. The window is measured from here, not from event creation. */
+  opensAt: number | null;
+  /** When the window closes — or closed. Null while nobody has joined. */
+  closesAt: number | null;
+  entrants: number;
+  /** Accepting entries right now. */
+  open: boolean;
+  /** Milliseconds until the draw. Null when there is nothing to wait for. */
+  msToDraw: number | null;
+}
+
+/**
+ * The state of the draw window, in one place.
+ *
+ * This existed twice — once in the board, once inline in the status route — and
+ * the two disagreed. The board computed `closesAt` from the first arrival; the
+ * status route returned `lottery_drawn_at`, which is when the draw *happened*
+ * and is null for as long as the window is open. So the console had no close
+ * time to count down to and simply sat there for fifteen seconds, which reads as
+ * a frozen page rather than a draw in progress.
+ *
+ * Two copies of one computation, no assertion that they agree. That is the same
+ * shape as every other bug this project has had, so the fix is one function that
+ * both callers use rather than two that happen to match today.
+ */
+export function lotteryWindowFor(eventId: string, now = nowMs()): LotteryWindow | null {
+  const event = getEvent(eventId);
+  if (!event) return null;
+
+  const row = getDb()
+    .prepare(
+      `SELECT MIN(joined_at) AS first_join, COUNT(*) AS entrants
+         FROM queue_entry WHERE event_id = ?`,
+    )
+    .get(eventId) as { first_join: number | null; entrants: number };
+
+  const drawn = event.lottery_drawn_at !== null;
+  const opensAt = row.first_join;
+  const closesAt =
+    opensAt === null ? null : opensAt + Math.max(0, event.lottery_window_sec) * 1000;
+
+  return {
+    mode: event.lottery_mode,
+    drawn,
+    drawnAt: event.lottery_drawn_at,
+    opensAt,
+    closesAt,
+    entrants: row.entrants,
+    open: !drawn,
+    msToDraw: !drawn && closesAt !== null ? Math.max(0, closesAt - now) : null,
+  };
+}
+
 export function queueStats(eventId: string) {
   const entries = listQueue(eventId);
   return {

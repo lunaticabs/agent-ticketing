@@ -296,6 +296,7 @@ test('the board renders its first frame and survives its poll', async () => {
       lotteryDrawnAt: null, lotterySeed: null, lotteryOpen: true, lotteryClosesAt: null,
     },
     idp: { mode: 'local', degraded: true, issuer: 'https://sandbox.auth.world.org' },
+    lottery: { mode: 'lottery', drawn: false, drawnAt: null, opensAt: Date.now(), closesAt: Date.now() + 15_000, entrants: 1, open: true, msToDraw: 15_000 },
     queue: { total: 0, drawn: 0, allocated: 0, waiting: 0, entries: [] },
     slots: { total: 8, available: 8, allocated: 0, confirmed: 0, transferPending: 0, transferred: 0, deferrals: 0, items: [] },
     approvals: [],

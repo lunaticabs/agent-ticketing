@@ -1,5 +1,5 @@
 import { json, route, requireContinuity } from '@/lib/api';
-import { myEntry, queueStats, listQueue } from '@/lib/queue';
+import { myEntry, lotteryWindowFor, queueStats, listQueue } from '@/lib/queue';
 import { primaryEvent, getEvent } from '@/lib/humans';
 import { allocatedSlotsFor, heldSlotsFor, slotSummary, sweep } from '@/lib/slots';
 import { activeGrants } from '@/lib/grants';
@@ -36,9 +36,10 @@ export const GET = route(async (req) => {
       name: event.name,
       lotteryMode: event.lottery_mode,
       lotteryDrawn: event.lottery_drawn_at !== null,
-      lotteryClosesAt:
-        event.lottery_drawn_at === null ? null : event.lottery_drawn_at,
     },
+    // Everything the console needs to say "a draw is running" instead of looking
+    // frozen: when the window opened, when it closes, and who is in it.
+    lottery: lotteryWindowFor(eventId, now),
     queue: {
       entryId: entry?.id ?? null,
       joined: Boolean(entry),

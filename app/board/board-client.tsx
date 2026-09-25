@@ -148,6 +148,8 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
   }, [data]);
 
   const remaining = useCountdown(soonestDeadline, data?.serverNow ?? null);
+  /** Ticks locally while the draw window is open, so the board never looks hung. */
+  const drawRemaining = useCountdown(data?.event?.lotteryClosesAt ?? null, data?.serverNow ?? null);
 
   if (error && !data) {
     return (
@@ -265,9 +267,20 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
           title={`queue · ${data.queue.total}`}
           className="lg:col-span-3"
           right={
-            <span className="tnum text-xs text-[var(--color-muted)]">
-              {data.queue.drawn ? 'drawn' : data.event.lotteryOpen ? 'window open' : 'closed'}
-            </span>
+            data.event.lotteryOpen && !data.queue.drawn && data.event.lotteryClosesAt ? (
+              <span className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-[var(--color-warn)] uppercase">
+                <span className="pulse inline-block h-2 w-2 rounded-full bg-[var(--color-warn)]" aria-hidden />
+                {drawRemaining != null && drawRemaining > 0 ? (
+                  <span className="tnum">{formatSeconds(drawRemaining)}</span>
+                ) : (
+                  'drawing'
+                )}
+              </span>
+            ) : (
+              <span className="tnum text-xs text-[var(--color-muted)]">
+                {data.queue.drawn ? 'drawn' : 'closed'}
+              </span>
+            )
           }
         >
           <ol className="space-y-1">
@@ -307,12 +320,26 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
                 <p className="mono truncate text-[10px]">seed {data.drawVerification.seed}</p>
               </>
             ) : (
-              <span>
-                window open — everyone arriving before it closes gets the same odds
-                {data.event.lotteryClosesAt
-                  ? ` (closes in ${Math.max(0, Math.round((data.event.lotteryClosesAt - data.serverNow) / 1000))}s)`
-                  : ''}
-              </span>
+              // Rank columns are empty and nothing moves while the window is
+              // open. On a projector that reads as a crashed screen, so say the
+              // draw is running and count it down.
+              <div className="rounded-md border border-[color-mix(in_srgb,var(--color-warn)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-warn)_10%,transparent)] p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 font-bold tracking-wide text-[var(--color-warn)] uppercase">
+                    <span className="pulse inline-block h-2 w-2 rounded-full bg-[var(--color-warn)]" aria-hidden />
+                    {data.event.lotteryMode === 'fcfs' ? 'queue open' : 'draw in progress'}
+                  </span>
+                  <span className="tnum text-lg font-black text-[var(--color-warn)]">
+                    {drawRemaining == null ? '—' : drawRemaining <= 0 ? 'now…' : formatSeconds(drawRemaining)}
+                  </span>
+                </div>
+                <p className="mt-1">
+                  {data.queue.total} in the {data.event.lotteryMode === 'fcfs' ? 'queue' : 'draw'}
+                  {data.event.lotteryMode === 'fcfs'
+                    ? ' — arrival order decides'
+                    : ' — everyone here has the same odds'}
+                </p>
+              </div>
             )}
           </div>
         </Card>

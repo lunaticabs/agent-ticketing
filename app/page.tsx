@@ -56,6 +56,16 @@ interface Status {
     lotteryDrawn: boolean;
     lotteryClosesAt: number | null;
   };
+  lottery: {
+    mode: 'lottery' | 'fcfs';
+    drawn: boolean;
+    drawnAt: number | null;
+    opensAt: number | null;
+    closesAt: number | null;
+    entrants: number;
+    open: boolean;
+    msToDraw: number | null;
+  } | null;
   queue: {
     entryId: string | null;
     joined: boolean;
@@ -364,6 +374,12 @@ export default function ConsolePage() {
     return deadlines.length ? Math.min(...deadlines) : null;
   }, [status.data]);
   const localRemaining = useCountdown(soonestDeadline, status.data?.serverNow ?? null);
+  /** Ticks locally, so the draw countdown moves every 200ms instead of every poll. */
+  const drawRemaining = useCountdown(status.data?.lottery?.closesAt ?? null, status.data?.serverNow ?? null);
+  const drawPending =
+    status.data?.lottery?.open === true &&
+    status.data.lottery.opensAt !== null &&
+    !status.data.queue?.lotteryRank;
   /** The authorization's own window, on the same ticking clock. */
   const approvalRemaining = useCountdown(outstanding?.expiresAt ?? null, status.data?.serverNow ?? null);
   const slotRemaining = (deadline: number) =>
@@ -463,20 +479,60 @@ export default function ConsolePage() {
             <>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <Metric label="in queue" value={status.data?.queue?.total ?? 0} />
-                <Metric label="your rank" value={status.data?.queue?.lotteryRank ?? '—'} />
+                <Metric
+                  label="your rank"
+                  value={status.data?.queue?.lotteryRank ?? (drawPending ? 'drawing…' : '—')}
+                />
                 <Metric label="arrival #" value={status.data?.queue?.arrivalSeq ?? '—'} />
               </div>
               <p className="mt-3 text-xs text-[var(--color-muted)]">
                 Rank comes from the draw, not from arrival. Arrival order is recorded only so the
                 FCFS control mode has something to sort by.
               </p>
+              {/*
+                The draw window is the one stretch where a correct system looks
+                like a broken one: nothing changes for fifteen seconds, and a
+                static "—" in the rank column reads as a hung page. Say the draw
+                is running, count it down locally, and show how many people are
+                in it, so the wait is visibly a wait.
+              */}
+              {drawPending && (
+                <div className="mt-3 rounded-lg border border-[color-mix(in_srgb,var(--color-warn)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-warn)_10%,transparent)] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="pulse inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-warn)]"
+                        aria-hidden
+                      />
+                      <span className="text-sm font-bold tracking-wide text-[var(--color-warn)] uppercase">
+                        {status.data?.lottery?.mode === 'fcfs'
+                          ? 'queue open'
+                          : 'draw in progress'}
+                      </span>
+                    </div>
+                    <span className="tnum text-2xl font-black text-[var(--color-warn)]">
+                      {drawRemaining == null
+                        ? 'soon'
+                        : drawRemaining <= 0
+                          ? 'now…'
+                          : formatSeconds(drawRemaining)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">
+                    {status.data?.lottery?.mode === 'fcfs'
+                      ? `${status.data?.lottery?.entrants ?? 0} in the queue. First come, first served — arrival order decides.`
+                      : `${status.data?.lottery?.entrants ?? 0} in the draw. Your rank appears the moment the window closes; arrival order does not matter.`}
+                  </p>
+                </div>
+              )}
+
               <div className="mt-3 flex flex-wrap gap-2">
                 {!status.data?.queue?.joined && (
                   <Button tone="live" onClick={join} disabled={busy}>
                     Join the queue
                   </Button>
                 )}
-                {status.data?.queue?.joined && !status.data?.queue?.lotteryRank && (
+                {status.data?.queue?.joined && !status.data?.queue?.lotteryRank && !drawPending && (
                   <Badge tone="warn">waiting for the draw</Badge>
                 )}
                 {status.data?.queue?.allocatedAt && <Badge tone="live">you were served</Badge>}

@@ -77,6 +77,7 @@ function statusPayload(overrides: Record<string, unknown> = {}) {
       lotteryDrawn: true,
       lotteryClosesAt: null,
     },
+    lottery: { mode: 'lottery', drawn: false, drawnAt: null, opensAt: Date.now(), closesAt: Date.now() + 15_000, entrants: 3, open: true, msToDraw: 15_000 },
     queue: { entryId: 'q_1', joined: true, arrivalSeq: 1, lotteryRank: 1, allocatedAt: Date.now(), stats: {}, total: 1 },
     allocation: [],
     holding: [],
@@ -133,6 +134,85 @@ function stubSignedIn(): void {
 //  Journey A — a participant joins, waits, authorizes, and is confirmed
 // ════════════════════════════════════════════════════════════════════════════
 
+/**
+ * One board payload, built fresh per call.
+ *
+ * Both board journeys use this. A second hand-written fixture would be two
+ * copies of one shape with nothing asserting they agree — which is the exact
+ * bug class this suite exists to catch, and which had already crept into this
+ * file: the first draft of the draw-window journey was missing `security` and
+ * `idp`, and the board crashed reading them.
+ */
+function boardPayload(overrides: Record<string, unknown> = {}) {
+  const base = {
+    serverNow: Date.now(),
+    event: {
+      id: 'evt_test',
+      name: 'Tokyo Night',
+        lotteryMode: 'lottery',
+      totalSlots: 3,
+      approvalWindowSec: 90,
+      lotteryWindowSec: 15,
+      transferWindowSec: 120,
+      transferInboundCap: 2,
+      lotteryDrawnAt: Date.now(),
+      lotterySeed: 'seed123',
+      lotteryOpen: false,
+      lotteryClosesAt: null,
+    },
+    idp: { mode: 'local', degraded: true, issuer: 'https://sandbox.auth.world.org' },
+    queue: {
+      total: 2,
+      drawn: 2,
+      allocated: 1,
+      waiting: 1,
+      entries: [
+        { entryId: 'q1', short: 'aaaa1111', seq: 1, joinedAt: Date.now(), rank: 1, allocatedAt: Date.now() },
+        { entryId: 'q2', short: 'bbbb2222', seq: 2, joinedAt: Date.now(), rank: 2, allocatedAt: null },
+      ],
+    },
+    slots: {
+      total: 3,
+      available: 1,
+      allocated: 1,
+      confirmed: 1,
+      transferPending: 0,
+      transferred: 0,
+      deferrals: 1,
+      items: [
+        { id: 'slot_1', state: 'ALLOCATED', holder: 'cid_a', holderShort: 'aaaa1111', acquiredVia: 'lottery', approvalDeadline: Date.now() + 45_000, remainingMs: 45_000, deferralCount: 0, giftUsed: false },
+        { id: 'slot_2', state: 'CONFIRMED', holder: 'cid_b', holderShort: 'bbbb2222', acquiredVia: 'lottery', approvalDeadline: null, remainingMs: null, deferralCount: 1, giftUsed: false },
+        { id: 'slot_3', state: 'AVAILABLE', holder: null, holderShort: null, acquiredVia: null, approvalDeadline: null, remainingMs: null, deferralCount: 0, giftUsed: false },
+      ],
+    },
+    approvals: [
+      {
+        id: 'apv_1',
+        kind: 'purchase',
+        continuityId: 'cid_a',
+        continuityShort: 'aaaa1111',
+        slotId: 'slot_1',
+        state: 'PENDING',
+        boundAction: 'buy_slot:evt_test',
+        boundSignal: 'evt_test:cid_a',
+        failReason: null,
+        expiresAt: Date.now() + 45_000,
+        remainingMs: 45_000,
+        stages: { requested: Date.now(), completed: null, verified: null, executed: null },
+      },
+    ],
+    actors: { human: 3, agent: 7, system: 1 },
+    humans: { total: 2, distinctInQueue: 2 },
+    drawVerification: { settled: true, matches: true, checked: 2, seed: 'seed123', algorithm: 'sha256(seed||id)' },
+    security: { consumedProofs: 1, protectedActionsExecuted: 1, totalRefusals: 3, refusals: {} },
+    audit: [
+      { id: 'a1', type: 'slot.approval_expired', severity: 'warn', at: Date.now(), continuityShort: 'aaaa1111', slotId: 'slot_2', actor: 'system', payload: { note: 'no decision' } },
+    ],
+    highlight: { kind: 'deferral', at: Date.now(), slotId: 'slot_2', continuityId: 'cid_b', message: 'deferred to the next candidate' },
+  };
+  return { ...base, serverNow: Date.now(), ...overrides };
+}
+
 test('journey · signed-out visitor can find and press the sign-in button', async () => {
   resetNetwork();
   stubSignedOut();
@@ -179,6 +259,141 @@ test('journey · joining the queue opens a slot with a live countdown', async ()
     assert.ok(
       screen.buttons().includes('Ask me to authorize'),
       `the authorize button should be offered; got ${JSON.stringify(screen.buttons())}`,
+    );
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('journey · the draw window says it is drawing, and counts down', async () => {
+  // The window is the one stretch where a correct system looks broken: nothing
+  // changes for fifteen seconds, and an empty rank column reads as a hung page.
+  // Before this, the status route returned `lottery_drawn_at` as the close time —
+  // null for exactly as long as the window was open — so the console had nothing
+  // to count down to and simply sat there.
+  resetNetwork();
+  stubSignedIn();
+
+  let drawn = false;
+  stub(
+    '/api/queue/status',
+    () =>
+      statusPayload(
+        drawn
+          ? {
+              lottery: {
+                mode: 'lottery',
+                drawn: true,
+                drawnAt: Date.now(),
+                opensAt: Date.now() - 15_000,
+                closesAt: Date.now(),
+                entrants: 3,
+                open: false,
+                msToDraw: null,
+              },
+              queue: {
+                entryId: 'q_1',
+                joined: true,
+                arrivalSeq: 1,
+                lotteryRank: 2,
+                allocatedAt: null,
+                stats: {},
+                total: 3,
+              },
+            }
+          : {
+              lottery: {
+                mode: 'lottery',
+                drawn: false,
+                drawnAt: null,
+                opensAt: Date.now() - 3_000,
+                closesAt: Date.now() + 12_000,
+                entrants: 3,
+                open: true,
+                msToDraw: 12_000,
+              },
+              queue: {
+                entryId: 'q_1',
+                joined: true,
+                arrivalSeq: 1,
+                lotteryRank: null,
+                allocatedAt: null,
+                stats: {},
+                total: 3,
+              },
+            },
+      ),
+  );
+
+  const ConsolePage = (await import('../app/page')).default;
+  const screen = await render(ConsolePage);
+
+  try {
+    await screen.waitFor((s) => /draw in progress/i.test(s.text()), 'the drawing indicator');
+    const text = screen.text();
+    assert.ok(/3 in the draw/.test(text), 'the entrant count must be visible while waiting');
+    assert.ok(
+      /your rank[\s\S]{0,40}drawing/i.test(text) || /drawing/i.test(text),
+      'the empty rank must say it is drawing rather than showing a bare dash',
+    );
+
+    // The countdown has to actually move, or the indicator is decoration.
+    const seconds = () => (screen.text().match(/(\d+\.\d)s/) ?? [])[1];
+    const before = seconds();
+    assert.ok(before, `expected a ticking countdown; got: ${text.slice(0, 400)}`);
+    await screen.settle(900);
+    assert.notEqual(seconds(), before, 'the draw countdown must tick, not sit still');
+
+    // And once the draw lands, the indicator gives way to the real rank.
+    drawn = true;
+    await screen.waitFor((s) => !/draw in progress/i.test(s.text()), 'the indicator to clear');
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('journey · the board shows the draw running rather than an empty rank column', async () => {
+  resetNetwork();
+  stub(
+    '/api/board/state',
+    boardPayload({
+      event: {
+        ...boardPayload().event,
+        lotteryDrawnAt: null,
+        lotterySeed: null,
+        lotteryOpen: true,
+        lotteryClosesAt: Date.now() + 12_000,
+        totalSlots: 8,
+      },
+      queue: {
+        ...boardPayload().queue,
+        total: 4,
+        drawn: false,
+        allocated: 0,
+        waiting: 4,
+        entries: [
+          { entryId: 'e1', short: 'aaaa1111', seq: 1, joinedAt: Date.now(), rank: null, allocatedAt: null },
+          { entryId: 'e2', short: 'bbbb2222', seq: 2, joinedAt: Date.now(), rank: null, allocatedAt: null },
+        ],
+      },
+      slots: { ...boardPayload().slots, total: 8, available: 8, allocated: 0, confirmed: 0, deferrals: 0, items: [] },
+      approvals: [],
+      actors: { human: 0, agent: 0, system: 0 },
+      drawVerification: { settled: false, matches: true, checked: 0, seed: null, algorithm: 'sha256' },
+      audit: [],
+      highlight: { kind: 'none', at: null, slotId: null, continuityId: null, message: null },
+    }),
+  );
+
+  const BoardClient = (await import('../app/board/board-client')).default;
+  const screen = await render(BoardClient, { initial: null });
+
+  try {
+    await screen.waitFor((s) => /draw in progress/i.test(s.text()), 'the board drawing banner');
+    assert.ok(/4 in the draw/.test(screen.text()), 'the board must say how many are waiting');
+    assert.ok(
+      /same odds/i.test(screen.text()),
+      'and why waiting is the correct behaviour rather than a fault',
     );
   } finally {
     await screen.unmount();

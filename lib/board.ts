@@ -13,7 +13,7 @@
  */
 import { getDb } from './db';
 import { listEvents, primaryEvent, type EventRow } from './humans';
-import { listQueue, queueStats, recomputeDrawOrder } from './queue';
+import { listQueue, lotteryWindowFor, queueStats, recomputeDrawOrder } from './queue';
 import { listSlots, slotSummary, sweep } from './slots';
 import { listApprovals } from './approval';
 import { actorTally, recentAudit } from './audit';
@@ -62,10 +62,9 @@ export function boardState(eventId?: string) {
       lotteryDrawnAt: event.lottery_drawn_at,
       lotterySeed: event.lottery_seed,
       lotteryOpen: event.lottery_drawn_at === null,
-      lotteryClosesAt:
-        event.lottery_drawn_at === null && event.lottery_window_sec > 0
-          ? earliestJoin(event.id) + event.lottery_window_sec * 1000
-          : null,
+      // Shared with the console's status route. See `lotteryWindowFor` for why
+      // this is not computed twice.
+      lotteryClosesAt: lotteryWindowFor(event.id)?.closesAt ?? null,
     },
     idp: {
       mode: idpMode(),
