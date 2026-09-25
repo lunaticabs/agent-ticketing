@@ -127,6 +127,7 @@ const STATUS = {
   grants: [],
   inbound: { used: 0, cap: 2 },
   slots: { total: 8, available: 8, allocated: 0, confirmed: 0, transfers: 0 },
+  openApprovals: [],
   recentTransitions: [],
 };
 
@@ -213,6 +214,77 @@ test('console renders for a signed-in human and shows their queue state', async 
   // The status payload only reached the page if the queue numbers rendered.
   assert.match(result.html, /cid_abc123/, 'the continuity id should be shown once signed in');
   assert.match(result.html, /0 \/ 2/, 'the inbound counter should render from the status payload');
+});
+
+test('console finishes the handover after a consent round trip, without a third click', async () => {
+  // The reported sequence: press "Join the queue", get a slot, press "Ask me to
+  // authorize", approve on the phone, come back — and find the countdown still
+  // running and the button still pressable, because the approval id lived only
+  // in React state and the redirect had wiped it.
+  //
+  // The page must now read what is outstanding from the server and take an
+  // approved authorization to the gate by itself.
+  requested.length = 0;
+  stub('/api/health', HEALTH);
+  stub('/api/auth/me', { ok: true, continuityId: 'cid_abc123', grants: [] });
+
+  // First poll after returning from the consent screen: the human has approved,
+  // and the page has never heard of this approval before.
+  stub('/api/queue/status', {
+    ...STATUS,
+    allocation: [{ slotId: 'slot_1', deadline: Date.now() + 60_000, remainingMs: 60_000, deferralCount: 0 }],
+    openApprovals: [
+      {
+        approvalId: 'apv_returned',
+        state: 'APPROVED',
+        stage: 'completed',
+        kind: 'purchase',
+        boundAction: 'buy_slot:evt_test',
+        boundSignal: 'evt_test:cid_abc123',
+        slotId: 'slot_1',
+        mode: 'local',
+        consentUrl: null,
+        requestedAt: Date.now() - 4_000,
+        completedAt: Date.now() - 1_000,
+        verifiedAt: null,
+        executedAt: null,
+        expiresAt: Date.now() + 60_000,
+        remainingMs: 60_000,
+      },
+    ],
+  });
+  stub('/api/slot/claim', {
+    ok: true,
+    slotId: 'slot_1',
+    eventId: 'evt_test',
+    continuityId: 'cid_abc123',
+    acquiredVia: 'lottery',
+    confirmedAt: Date.now(),
+    approvalId: 'apv_returned',
+    nullifier: 'nul_x',
+    authTime: Date.now(),
+    stages: {},
+  });
+
+  const ConsolePage = (await import('../app/page')).default;
+  const result = await render('/', ConsolePage as never);
+
+  assert.equal(result.thrown, null, `the console threw: ${result.thrown?.message}`);
+  assert.deepEqual(result.consoleErrors, [], `React reported errors: ${result.consoleErrors.join(' | ')}`);
+
+  // It must actually present the approval to the gate on its own.
+  assert.ok(
+    result.requested.includes('POST /api/slot/claim'),
+    `expected the page to claim without another click; calls were: ${result.requested.join(', ')}`,
+  );
+
+  // And it must NOT offer to start a second authorization while one is
+  // outstanding — that is what made the flow impossible to finish.
+  assert.doesNotMatch(
+    result.html,
+    /Ask me to authorize/,
+    'the authorize button must not be shown while an authorization is outstanding',
+  );
 });
 
 test('the board renders its first frame and survives its poll', async () => {

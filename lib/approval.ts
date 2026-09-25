@@ -301,6 +301,94 @@ export function openApprovalsFor(continuityId: string): ApprovalRow[] {
     .all(continuityId) as ApprovalRow[];
 }
 
+export interface OpenApprovalView {
+  approvalId: string;
+  state: ApprovalState;
+  stage: 'requested' | 'completed' | 'verified' | 'executed' | 'denied' | 'expired';
+  kind: ApprovalKind;
+  boundAction: string;
+  boundSignal: string;
+  slotId: string | null;
+  mode: 'oidc' | 'device' | 'local';
+  /** Where the human goes to approve, while the request is still PENDING. */
+  consentUrl: string | null;
+  requestedAt: number;
+  completedAt: number | null;
+  verifiedAt: number | null;
+  executedAt: number | null;
+  expiresAt: number;
+  remainingMs: number;
+}
+
+/**
+ * What this human still owes an answer to.
+ *
+ * This is the piece that was missing, and its absence was invisible from the
+ * server's side: the browser starts an authorization, gets redirected to the
+ * consent screen, comes back — and has forgotten the approval id, because it
+ * only ever lived in React state. The approval row then sat at PENDING forever
+ * unless something happened to poll `GET /api/approval/{id}`, while the slot's
+ * countdown kept running and the "authorize" button stayed pressable. Pressing
+ * it again started a *second* authorization, so the flow could never be
+ * completed from the browser at all.
+ *
+ * The fix is not to persist the id on the client. It is to stop treating the
+ * client as the record: the server knows what is outstanding, so the page asks.
+ * That also makes the flow survive a refresh, a second tab, or a different
+ * browser, none of which client-side storage would have handled well.
+ *
+ * `sync` advances any request the IdP has since resolved. It matters: the
+ * approval row only moves when something looks at it, and a browser that
+ * navigated away to a consent screen is exactly the something that is not
+ * looking.
+ */
+export async function openApprovalViews(continuityId: string): Promise<OpenApprovalView[]> {
+  const open = openApprovalsFor(continuityId);
+
+  // Advance the ones still marked PENDING — the human may already have approved
+  // on their device while this page was away.
+  await Promise.all(
+    open.filter((row) => row.state === 'PENDING').map((row) => syncApproval(row.id).catch(() => undefined)),
+  );
+
+  const fresh = openApprovalsFor(continuityId);
+  const now = Date.now();
+
+  return fresh.map((row) => {
+    const request = getDb()
+      .prepare(`SELECT authorize_url, mode FROM auth_request WHERE id = ?`)
+      .get(row.request_id) as { authorize_url: string | null; mode: OpenApprovalView['mode'] } | undefined;
+
+    return {
+      approvalId: row.id,
+      state: row.state,
+      stage: stageOf(row),
+      kind: row.kind,
+      boundAction: row.bound_action,
+      boundSignal: row.bound_signal,
+      slotId: row.slot_id,
+      mode: request?.mode ?? 'local',
+      consentUrl: row.state === 'PENDING' ? (request?.authorize_url ?? null) : null,
+      requestedAt: row.requested_at,
+      completedAt: row.completed_at,
+      verifiedAt: row.verified_at,
+      executedAt: row.executed_at,
+      expiresAt: row.expires_at,
+      remainingMs: Math.max(0, row.expires_at - now),
+    };
+  });
+}
+
+/** Which of the four stages an approval has reached. */
+export function stageOf(row: Pick<ApprovalRow, 'executed_at' | 'verified_at' | 'completed_at' | 'state'>): OpenApprovalView['stage'] {
+  if (row.executed_at) return 'executed';
+  if (row.verified_at) return 'verified';
+  if (row.completed_at) return 'completed';
+  if (row.state === 'DENIED') return 'denied';
+  if (row.state === 'EXPIRED') return 'expired';
+  return 'requested';
+}
+
 /**
  * Server-side verification for a specific approval row.
  *

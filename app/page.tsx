@@ -9,7 +9,7 @@
  * path for the browser, which is what makes the agent's behaviour on stage
  * believable.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Badge,
@@ -24,6 +24,24 @@ import {
   usePoll,
   type ReasonBody,
 } from './_components/ui';
+
+interface OpenApproval {
+  approvalId: string;
+  state: 'PENDING' | 'APPROVED' | 'CONSUMED' | 'DENIED' | 'EXPIRED';
+  stage: string;
+  kind: string;
+  boundAction: string;
+  boundSignal: string;
+  slotId: string | null;
+  mode: string;
+  consentUrl: string | null;
+  requestedAt: number;
+  completedAt: number | null;
+  verifiedAt: number | null;
+  executedAt: number | null;
+  expiresAt: number;
+  remainingMs: number;
+}
 
 interface Status {
   serverNow: number;
@@ -51,6 +69,7 @@ interface Status {
   grants: { id: string; scope: string; expiresAt: number | null }[];
   inbound: { used: number; cap: number };
   slots: { total: number; available: number; allocated: number; confirmed: number; transfers: number };
+  openApprovals: OpenApproval[];
   recentTransitions: { kind: string; slotId: string; message: string; at: number }[];
 }
 
@@ -79,24 +98,58 @@ export default function ConsolePage() {
   const [error, setError] = useState<ReasonBody | null>(null);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
-  const [approval, setApproval] = useState<ApprovalView | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [linkRequestId, setLinkRequestId] = useState<string | null>(null);
   const [deviceCode, setDeviceCode] = useState<{ userCode: string; verificationUriComplete: string } | null>(null);
   const [meta, setMeta] = useState<{ action: string; signal: string } | null>(null);
   const [transferLink, setTransferLink] = useState<string | null>(null);
+  /**
+   * A local echo of the approval, used only to bridge the instant between
+   * pressing "authorize" and the next status poll.
+   *
+   * It is deliberately NOT the record. The authoritative answer comes from
+   * `status.data.openApprovals`, because an approval held only in React state
+   * does not survive the trip to the consent screen and back: the human approved
+   * on their phone, the IdP redirected here, the state was gone, and the page
+   * showed a running countdown and a pressable button as if nothing had
+   * happened. Pressing it started a *second* authorization.
+   */
+  const [localApproval, setLocalApproval] = useState<ApprovalView | null>(null);
+  const claimed = useRef<Set<string>>(new Set());
 
   // `null` while we are still deciding, and while signed out. This variable must
   // only ever hold a queue-status payload: treating a health response as one is
   // what crashed the console for every signed-out visitor.
-  const status = usePoll<Status & { ok: true }>(
-    signedIn === true ? '/api/queue/status' : null,
-    1000,
-  );
+  const status = usePoll<Status & { ok: true }>(signedIn === true ? '/api/queue/status' : null, 1000);
 
   const note = useCallback((line: string) => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 40));
   }, []);
+
+  const openApprovals = status.data?.openApprovals ?? [];
+  const outstanding = openApprovals[0] ?? null;
+
+  /** What the page should show as the current authorization. */
+  const approval: ApprovalView | null = useMemo(() => {
+    if (!outstanding) return localApproval;
+    return {
+      approvalId: outstanding.approvalId,
+      kind: outstanding.kind,
+      state: outstanding.state,
+      stage: outstanding.stage,
+      boundAction: outstanding.boundAction,
+      boundSignal: outstanding.boundSignal,
+      slotId: outstanding.slotId,
+      failReason: null,
+      remainingMs: outstanding.remainingMs,
+      stages: [
+        { key: 'requested', label: '1 · request issued', at: outstanding.requestedAt },
+        { key: 'completed', label: '2 · human completed on device', at: outstanding.completedAt },
+        { key: 'verified', label: '3 · server verified the proof', at: outstanding.verifiedAt },
+        { key: 'executed', label: '4 · protected action executed', at: outstanding.executedAt },
+      ],
+    };
+  }, [outstanding, localApproval]);
 
   // Establish whether a session exists before showing queue state.
   useEffect(() => {
@@ -118,20 +171,60 @@ export default function ConsolePage() {
     if (signedIn === false) setLinkUrl(null);
   }, [signedIn]);
 
-  // Poll the in-flight approval so the four stages animate as they happen.
+  /**
+   * Take an approved authorization to the gate.
+   *
+   * The human already answered on their phone; making them press a third button
+   * afterwards is both a worse demo and a worse product. Guarded per approval id
+   * so a polling loop cannot fire it twice — the gate would refuse the second
+   * anyway, but a duplicate request is a confusing thing to show.
+   */
   useEffect(() => {
-    if (!approval) return;
+    const ready = openApprovals.find(
+      (a) => a.state === 'APPROVED' && !claimed.current.has(a.approvalId),
+    );
+    if (!ready) return;
+    claimed.current.add(ready.approvalId);
+
+    void (async () => {
+      setBusy(true);
+      try {
+        const res = await call<{ ok: true; slotId: string }>('/api/slot/claim', {
+          json: { approval: ready.approvalId },
+        });
+        note(`CONFIRMED ${res.slotId} — nullifier spent`);
+        setLocalApproval(null);
+      } catch (err) {
+        const body = (err as { body?: ReasonBody }).body;
+        setError(body ?? null);
+        note(`claim refused: ${body?.code ?? 'unknown'}`);
+      } finally {
+        setBusy(false);
+        void status.refresh();
+      }
+    })();
+    // `status` is stable across renders; including it would re-fire the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openApprovals, note]);
+
+  /**
+   * Poll a locally-known approval only until the server starts reporting it.
+   * After that the status poll is the single source of truth, and two pollers
+   * disagreeing about the same row is exactly the kind of drift that produced
+   * this bug in the first place.
+   */
+  useEffect(() => {
+    if (!localApproval || outstanding) return;
     const timer = setInterval(async () => {
       try {
-        const next = await call<ApprovalView & { ok: true }>(`/api/approval/${approval.approvalId}`);
-        setApproval(next);
-        if (next.stage !== approval.stage) note(`approval → ${next.stage}`);
+        const next = await call<ApprovalView & { ok: true }>(`/api/approval/${localApproval.approvalId}`);
+        setLocalApproval(next);
       } catch {
         /* keep polling; a transient failure is not worth surfacing here */
       }
     }, 900);
     return () => clearInterval(timer);
-  }, [approval, note]);
+  }, [localApproval, outstanding]);
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(true);
@@ -212,7 +305,7 @@ export default function ConsolePage() {
 
       setMeta({ action: res.boundAction, signal: res.boundSignal });
       note(`approval requested for ${res.slotId} (${res.mode})`);
-      setApproval({
+      setLocalApproval({
         approvalId: res.approvalId,
         kind: 'purchase',
         state: 'PENDING',
@@ -233,13 +326,13 @@ export default function ConsolePage() {
       }
     });
 
-  const claim = () =>
+  const claim = (approvalId: string) =>
     run('claim', async () => {
-      if (!approval) throw new Error('no approval in flight');
       const res = await call<{ ok: true; slotId: string; nullifier: string }>('/api/slot/claim', {
-        json: { approval: approval.approvalId },
+        json: { approval: approvalId },
       });
       note(`CONFIRMED ${res.slotId} — nullifier spent`);
+      setLocalApproval(null);
       void status.refresh();
     });
 
@@ -257,17 +350,16 @@ export default function ConsolePage() {
       note('transfer offer created — the window has NOT started yet');
     });
 
-  const deny = () =>
+  const deny = (approvalId: string) =>
     run('deny', async () => {
-      if (!approval) return;
-      await call('/api/auth/deny', { json: { requestId: approval.approvalId } }).catch(async () => {
-        await call(`/api/approval/${approval.approvalId}`, { json: { reason: 'denied by the human' } });
-      });
+      await call(`/api/approval/${approvalId}`, { json: { reason: 'denied by the human' } });
       note('denied — nothing will execute');
+      setLocalApproval(null);
+      void status.refresh();
     });
 
   const remaining = useMemo(() => {
-    if (!approval || !status.data) return null;
+    if (!approval) return null;
     const deadline = Date.now() + approval.remainingMs;
     return Math.max(0, deadline - Date.now());
   }, [approval, status.data]);
@@ -422,9 +514,23 @@ export default function ConsolePage() {
                   <div className="tnum text-4xl font-black text-[var(--color-live)]">
                     {formatSeconds(a.remainingMs)}
                   </div>
-                  <Button tone="live" onClick={requestApproval} disabled={busy}>
-                    Ask me to authorize
-                  </Button>
+                  {/*
+                    While an authorization is outstanding there is nothing to ask
+                    for. Offering the button anyway is what let a human approve on
+                    their phone, come back, and start a *second* authorization
+                    because the page looked untouched.
+                  */}
+                  {approval ? (
+                    <Badge tone={approval.state === 'PENDING' ? 'warn' : 'live'}>
+                      {approval.state === 'PENDING'
+                        ? 'waiting for you to approve'
+                        : 'approved — completing…'}
+                    </Badge>
+                  ) : (
+                    <Button tone="live" onClick={requestApproval} disabled={busy}>
+                      Ask me to authorize
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -448,6 +554,28 @@ export default function ConsolePage() {
                 <div>action {approval.boundAction}</div>
                 <div>signal {approval.boundSignal}</div>
               </div>
+
+              {approval.state === 'PENDING' && (
+                <div className="mt-3 rounded-md border border-[color-mix(in_srgb,var(--color-warn)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-warn)_8%,transparent)] p-2 text-xs text-[var(--color-warn)]">
+                  Waiting for the human. Approve on your device and this page will finish the
+                  handover on its own — the countdown above is the slot&apos;s window, not the
+                  authorization&apos;s.
+                  {outstanding?.consentUrl && (
+                    <>
+                      {' '}
+                      <a className="underline" href={outstanding.consentUrl}>
+                        re-open the consent screen
+                      </a>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {approval.state === 'APPROVED' && (
+                <div className="mt-3 rounded-md border border-[color-mix(in_srgb,var(--color-live)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-live)_8%,transparent)] p-2 text-xs text-[var(--color-live)]">
+                  Approved and verified. Presenting to the gate…
+                </div>
+              )}
 
               {approval.stages.length > 0 && (
                 <ol className="mt-3 space-y-1 text-sm">
@@ -477,10 +605,18 @@ export default function ConsolePage() {
               )}
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button tone="brand" onClick={claim} disabled={busy || approval.state !== 'APPROVED'}>
+                <Button
+                  tone="brand"
+                  onClick={() => claim(approval.approvalId)}
+                  disabled={busy || approval.state !== 'APPROVED'}
+                >
                   Present approval to the gate
                 </Button>
-                <Button tone="alert" onClick={deny} disabled={busy || approval.state !== 'PENDING'}>
+                <Button
+                  tone="alert"
+                  onClick={() => deny(approval.approvalId)}
+                  disabled={busy || approval.state !== 'PENDING'}
+                >
                   Deny
                 </Button>
                 <Button onClick={claimWithoutApproval} disabled={busy} title="Demonstrates the refusal">
