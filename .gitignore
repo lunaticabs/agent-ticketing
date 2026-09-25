@@ -1,0 +1,38 @@
+# ── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Next.js ─────────────────────────────────────────────────────────────────
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# ── Secrets ─────────────────────────────────────────────────────────────────
+# RED LINE 2: the World ID signing key / client secret lives ONLY on the server.
+# It must never be committed and must never reach the client bundle.
+.env
+.env.local
+.env.*.local
+
+# ── Local data / runtime state ──────────────────────────────────────────────
+# SQLite file is disposable: `npm run reset` deletes and re-seeds it.
+/db/*.db
+/db/*.db-shm
+/db/*.db-wal
+/var/
+
+# ── OS / editor ─────────────────────────────────────────────────────────────
+.DS_Store
+*.pem
+.idea/
+.vscode/
+
+# ── Test / local tooling artifacts ──────────────────────────────────────────
+.test-db/
+# Local npm cache. It exists because this checkout's default npm cache lives
+# outside the writable area; it is machine-local and never committed.
+.npm-cache/
+# Machine-specific npm config (cache path). Regenerate with `npm config set cache`.
+.npmrc
