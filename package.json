@@ -13,7 +13,7 @@
     "agent": "tsx agent/runner.ts",
     "mcp": "tsx mcp/server.ts",
     "bots": "tsx scripts/bot-army.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "TSX_TSCONFIG_PATH=tests/tsconfig.json tsx --test tests/*.test.ts",
     "spike": "tsx scripts/spike.ts",
     "security-check": "tsx scripts/security-check.ts",
     "e2e": "tsx scripts/e2e.ts",
@@ -33,9 +33,11 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^22.15.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "jsdom": "^30.1.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0"

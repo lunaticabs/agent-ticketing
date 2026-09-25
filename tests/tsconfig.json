@@ -1,0 +1,11 @@
+{
+  // The application uses `"jsx": "preserve"` because Next.js runs its own
+  // compiler. When the smoke tests import a component directly there is no
+  // Next.js compiler in the loop, so `tsx`/esbuild needs to be told which JSX
+  // runtime to emit — otherwise every component compiles to `React.createElement`
+  // and fails with "React is not defined".
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  }
+}
