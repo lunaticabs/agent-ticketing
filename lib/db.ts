@@ -53,6 +53,7 @@ function open(): DB {
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   audit_event: ['actor'],
   approval: ['requested_via'],
+  dev_agent_session: ['transcript'],
 };
 
 export function assertSchemaCurrent(db: DB): void {

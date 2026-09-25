@@ -33,7 +33,13 @@ Two claims, each demonstrable on stage in under three minutes:
    reference, with a reused one, or with one whose parameters have been changed.
    All four are refused, each with a different machine-readable reason.
 
-3. **You can see who did what.** Every action is attributed to the human or to
+3. **The agent is a real MCP client, not a script.** `/admin` has a button that
+   tells an agent to go and buy a ticket. It spawns `mcp/server.ts` over stdio and
+   drives the three tools through the official SDK, so the transcript on screen is
+   a genuine JSON-RPC exchange — `tools/list`, `queue.join`, `queue.status` polls,
+   `slot.claim`. It stops exactly once, to ask the human.
+
+4. **You can see who did what.** Every action is attributed to the human or to
    the agent holding their delegated credential, and the board reports the tally.
    Driving the real agent through a purchase reads: `agent` queued, `agent`
    asked, `human` answered on their phone, `agent` executed. That is the claim

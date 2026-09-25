@@ -111,7 +111,8 @@ const HEALTH = {
     detail: 'fallback',
   },
   devRoutes: true,
-  event: { id: 'evt_test', name: 'Test', policy: 'gift', lotteryMode: 'lottery', lotteryDrawn: false, windows: {} },
+  urls: { publicBaseUrl: 'http://localhost:3000', redirectUri: 'http://localhost:3000/api/auth/world/callback', consistent: true, problem: null },
+  event: { id: 'evt_test', name: 'Test', lotteryMode: 'lottery', lotteryDrawn: false, windows: {} },
 };
 
 /** Shape of `GET /api/queue/status` for a signed-in human. */
@@ -119,7 +120,7 @@ const STATUS = {
   ok: true,
   serverNow: Date.now(),
   continuityId: 'cid_abc123',
-  event: { id: 'evt_test', name: 'Test', policy: 'gift', lotteryMode: 'lottery', lotteryDrawn: false, lotteryClosesAt: null },
+  event: { id: 'evt_test', name: 'Test', lotteryMode: 'lottery', lotteryDrawn: false, lotteryClosesAt: null },
   queue: { entryId: 'q_1', joined: true, arrivalSeq: 1, lotteryRank: 1, allocatedAt: null, stats: {}, total: 1 },
   allocation: [],
   holding: [],
@@ -290,7 +291,7 @@ test('the board renders its first frame and survives its poll', async () => {
   stub('/api/board/state', {
     serverNow: Date.now(),
     event: {
-      id: 'evt_test', name: 'Tokyo Night', policy: 'gift', lotteryMode: 'lottery', totalSlots: 8,
+      id: 'evt_test', name: 'Tokyo Night', lotteryMode: 'lottery', totalSlots: 8,
       approvalWindowSec: 90, lotteryWindowSec: 15, transferWindowSec: 120, transferInboundCap: 2,
       lotteryDrawnAt: null, lotterySeed: null, lotteryOpen: true, lotteryClosesAt: null,
     },

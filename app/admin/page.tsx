@@ -14,7 +14,7 @@
  *   · the impersonation / army controls, which are a disclosed bypass
  *   · the "claim with no approval" probe, which is meant to fail
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Badge,
@@ -30,6 +30,7 @@ import {
 interface Health {
   idp: { mode: string; degraded: boolean; issuer: string };
   devRoutes: boolean;
+  urls: { publicBaseUrl: string; redirectUri: string; consistent: boolean; problem: string | null };
   event: {
     id: string;
     name: string;
@@ -64,6 +65,17 @@ export default function AdminPage() {
   const [army, setArmy] = useState<{ accounts: ArmyMember[]; humans: { continuityId: string; accounts: number }[]; collapseRatio: string } | null>(null);
   const [attacks, setAttacks] = useState<AttackOutcome[]>([]);
   const [contrast, setContrast] = useState<{ verdict: string } | null>(null);
+  const [agentHandle, setAgentHandle] = useState('demo-human');
+  const [agentRequest, setAgentRequest] = useState('Get me a ticket for tonight. Ask me when you need me.');
+  const [agentSession, setAgentSession] = useState<{
+    id: string;
+    state: string;
+    request_text: string;
+    handle: string;
+    error: string | null;
+    steps: { at: number; kind: string; label: string; detail?: string; ok?: boolean }[];
+  } | null>(null);
+
   const [armyQueue, setArmyQueue] = useState<{
     accounts: number;
     humans: number;
@@ -73,6 +85,49 @@ export default function AdminPage() {
   } | null>(null);
 
   const devRoutes = health.data?.devRoutes ?? false;
+
+  /**
+   * Are we being *browsed* at the origin we *generate links for*?
+   *
+   * Those are different questions, and conflating them has caused three bugs in
+   * this project: a public base URL on http against a registered https redirect;
+   * dev routes calling themselves on the configured origin; and the MCP agent
+   * spawn dialling an origin nothing was listening on. Each time the symptom
+   * looked like a network fault.
+   *
+   * The server cannot detect this on its own — it has no idea which address the
+   * browser used — so the browser reports it.
+   */
+  const [browsingOrigin, setBrowsingOrigin] = useState<string | null>(null);
+  useEffect(() => setBrowsingOrigin(window.location.origin), []);
+  const configured = health.data?.urls?.publicBaseUrl ?? null;
+  const originMismatch =
+    browsingOrigin && configured && browsingOrigin !== configured
+      ? { browsing: browsingOrigin, configured }
+      : null;
+
+  // Poll the agent run once it exists. Bounded by the run itself, which ends in
+  // a terminal state.
+  useEffect(() => {
+    if (!agentSession || ['done', 'failed', 'cancelled'].includes(agentSession.state)) return;
+    const timer = setInterval(async () => {
+      try {
+        const next = await call<{
+          ok: true;
+          id: string;
+          state: string;
+          request_text: string;
+          handle: string;
+          error: string | null;
+          steps: { at: number; kind: string; label: string; detail?: string; ok?: boolean }[];
+        }>(`/api/dev/agent/${agentSession.id}`);
+        setAgentSession(next);
+      } catch {
+        /* transient */
+      }
+    }, 900);
+    return () => clearInterval(timer);
+  }, [agentSession]);
 
   function log(line: string) {
     setOutput((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 80));
@@ -154,6 +209,137 @@ export default function AdminPage() {
             <div>mode<br /><span className="text-[var(--color-text)]">{health.data?.event?.lotteryMode ?? '—'}</span></div>
           </div>
         </Card>
+
+        {/* ── The MCP agent ─────────────────────────────────────────── */}
+        <Card title="the agent buys a ticket · MCP" className="lg:col-span-2">
+          <p className="mb-3 text-xs text-[var(--color-muted)]">
+            A human tells their agent to go and buy a ticket. The agent is a{' '}
+            <strong>real MCP client</strong>: it spawns <code className="mono">mcp/server.ts</code> over
+            stdio and drives the three tools, so what appears below is an actual JSON-RPC transcript
+            rather than a re-enactment. It stops exactly once — to ask the human — and the board files
+            every step it takes under <span className="text-[var(--color-brand)]">agent</span>.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={agentRequest}
+              onChange={(e) => setAgentRequest(e.target.value)}
+              placeholder="what the human says to the agent"
+              className="mono min-w-[22rem] flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] px-3 py-2 text-xs outline-none focus:border-[var(--color-brand)]"
+            />
+            <Button
+              tone="brand"
+              disabled={busy !== null || !devRoutes || (agentSession !== null && !['done', 'failed', 'cancelled'].includes(agentSession.state))}
+              onClick={() =>
+                run(
+                  'agent',
+                  () =>
+                    call<{ sessionId: string; continuityId: string; handle: string; request: string }>(
+                      '/api/dev/agent',
+                      { json: { handle: agentHandle, request: agentRequest } },
+                    ),
+                  (r) => {
+                    setAgentSession({
+                      id: r.sessionId,
+                      state: 'starting',
+                      request_text: r.request,
+                      handle: r.handle,
+                      error: null,
+                      steps: [],
+                    });
+                    log(`agent session ${r.sessionId} started`);
+                  },
+                )
+              }
+            >
+              Tell the agent to buy a ticket
+            </Button>
+            {agentSession && ['done', 'failed', 'cancelled'].includes(agentSession.state) && (
+              <Button onClick={() => setAgentSession(null)}>clear</Button>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
+            <span>acting for</span>
+            <input
+              value={agentHandle}
+              onChange={(e) => setAgentHandle(e.target.value)}
+              className="mono w-40 rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1"
+            />
+            <span>· the agent asks for a fresh World ID proof, and only that step needs a person</span>
+          </div>
+
+          {agentSession && (
+            <div className="mt-3">
+              <div className="flex items-center gap-2">
+                <Badge tone={agentSession.state === 'done' ? 'live' : agentSession.state === 'failed' ? 'alert' : 'warn'}>
+                  {agentSession.state}
+                </Badge>
+                <span className="mono text-xs text-[var(--color-muted)]">{agentSession.id}</span>
+              </div>
+
+              <ol className="mt-3 space-y-1">
+                {agentSession.steps.map((s, i) => (
+                  <li
+                    key={i}
+                    className={`rounded-md border px-2 py-1 text-xs ${
+                      s.kind === 'error'
+                        ? 'border-[color-mix(in_srgb,var(--color-alert)_40%,transparent)] text-[var(--color-alert)]'
+                        : s.kind === 'mcp'
+                          ? 'border-[color-mix(in_srgb,var(--color-brand)_40%,transparent)] text-[var(--color-brand)]'
+                          : s.kind === 'human'
+                            ? 'border-[color-mix(in_srgb,var(--color-live)_40%,transparent)] text-[var(--color-live)]'
+                            : 'border-[var(--color-line)] text-[var(--color-muted)]'
+                    }`}
+                  >
+                    <span className="font-bold tracking-wide uppercase">
+                      {s.kind === 'mcp' ? 'MCP' : s.kind}
+                    </span>{' '}
+                    <span className="mono">{s.label}</span>
+                    {s.detail && (
+                      <span className="ml-1 opacity-80">
+                        {s.detail.startsWith('http') ? (
+                          <a className="underline" href={s.detail} target="_blank" rel="noreferrer">
+                            {s.detail}
+                          </a>
+                        ) : (
+                          `— ${s.detail}`
+                        )}
+                      </span>
+                    )}
+                  </li>
+                ))}
+                {agentSession.steps.length === 0 && (
+                  <li className="text-xs text-[var(--color-muted)]">connecting…</li>
+                )}
+              </ol>
+
+              {agentSession.error && (
+                <p className="mt-2 text-xs text-[var(--color-alert)]">{agentSession.error}</p>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* ── Origin warning ────────────────────────────────────────── */}
+        {originMismatch && (
+          <Card title="⚠ the links this server generates point somewhere else" className="lg:col-span-2">
+            <p className="text-xs">
+              You are browsing <code className="mono text-[var(--color-text)]">{originMismatch.browsing}</code>,
+              but this server builds links against{' '}
+              <code className="mono text-[var(--color-text)]">{originMismatch.configured}</code>.
+            </p>
+            <p className="mt-2 text-xs text-[var(--color-muted)]">
+              Consent links in the agent transcript and the sign-in flow will open the second one. They
+              are correct for a real deployment — the portal registered that origin — but they will not
+              work while you are on this one.
+            </p>
+            <p className="mt-2 text-xs text-[var(--color-muted)]">
+              This has caused three separate bugs in this project, always the same shape: the URL that
+              goes in a link a human opens, and the URL for reaching yourself, are not the same URL.
+            </p>
+          </Card>
+        )}
 
         {/* ── Beat 1 ────────────────────────────────────────────────── */}
         <Card title="beat 1 · speed contrast">

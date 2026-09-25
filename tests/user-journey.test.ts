@@ -51,10 +51,9 @@ const HEALTH = {
   event: {
     id: 'evt_test',
     name: 'Tokyo Night',
-    policy: 'gift',
     lotteryMode: 'lottery',
     lotteryDrawn: false,
-    windows: { lotterySec: 15, approvalSec: 90, transferSec: 120 },
+    windows: { lotterySec: 15, approvalSec: 90 },
   },
 };
 
@@ -74,8 +73,7 @@ function statusPayload(overrides: Record<string, unknown> = {}) {
     event: {
       id: 'evt_test',
       name: 'Tokyo Night',
-      policy: 'gift',
-      lotteryMode: 'lottery',
+        lotteryMode: 'lottery',
       lotteryDrawn: true,
       lotteryClosesAt: null,
     },
@@ -523,8 +521,7 @@ test('journey · the board renders a queue, slots and a countdown from one poll'
     event: {
       id: 'evt_test',
       name: 'Tokyo Night',
-      policy: 'gift',
-      lotteryMode: 'lottery',
+        lotteryMode: 'lottery',
       totalSlots: 3,
       approvalWindowSec: 90,
       lotteryWindowSec: 15,
@@ -613,7 +610,7 @@ test('journey · every demo control is reachable and reports back', async () => 
   stub('/api/dev/reset', { ok: true, reset: true, eventId: 'evt_test' });
   stub('/api/dev/prime', { ok: true, eventId: 'evt_test', joined: 6, allocated: 0 });
   stub('/api/dev/fast-forward', { ok: true, eventId: 'evt_test', drew: true, deferrals: 2 });
-  stub('/api/dev/policy', { ok: true, event: { id: 'evt_test', policy: 'locked' } });
+  stub('/api/dev/policy', { ok: true, event: { id: 'evt_test', lotteryMode: 'lottery' } });
 
   const AdminPage = (await import('../app/admin/page')).default;
   const screen = await render(AdminPage);
@@ -680,6 +677,79 @@ test('journey · the speed-mode knobs are present, and the transfer policy knob 
     const policyCall = calls.find((c) => c.path === '/api/dev/policy');
     assert.ok(policyCall, 'pressing a mode knob must call the policy endpoint');
     assert.deepEqual(policyCall.body, { lotteryMode: 'fcfs' });
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('journey · the panel can tell an MCP agent to buy a ticket, and shows the transcript', async () => {
+  resetNetwork();
+  stub('/api/health', HEALTH);
+  stub('/api/dev/agent', {
+    ok: true,
+    sessionId: 'agent_test_1',
+    continuityId: 'cid_demo',
+    handle: 'demo-human',
+    request: 'Get me a ticket for tonight.',
+  });
+  stub('/api/dev/agent/agent_test_1', {
+    ok: true,
+    id: 'agent_test_1',
+    handle: 'demo-human',
+    request_text: 'Get me a ticket for tonight.',
+    state: 'awaiting_human',
+    error: null,
+    steps: [
+      { at: 1, kind: 'human', label: '"Get me a ticket for tonight."', detail: 'from demo-human' },
+      { at: 2, kind: 'mcp', label: 'tools/list', detail: 'queue.join · queue.status · slot.claim', ok: true },
+      { at: 3, kind: 'mcp', label: 'queue.join', detail: 'joined at arrival #1', ok: true },
+      { at: 4, kind: 'mcp', label: 'queue.status', detail: 'slot allocated: slot_1', ok: true },
+      { at: 5, kind: 'http', label: 'POST /api/slot/request', detail: 'consent link ready', ok: true },
+      { at: 6, kind: 'human', label: 'Approve here', detail: 'http://localhost:3000/auth/local?request=areq_1' },
+    ],
+  });
+
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
+
+  try {
+    await screen.waitFor((s) => s.buttons().includes('Tell the agent to buy a ticket'), 'the agent button');
+    await screen.click('Tell the agent to buy a ticket');
+    await screen.waitFor((s) => s.text().includes('tools/list'), 'the MCP transcript');
+
+    const text = screen.text();
+    // The transcript has to distinguish the MCP round trips from everything else,
+    // because "this really is MCP" is the claim the card makes.
+    assert.ok(text.includes('MCP'), 'MCP steps must be labelled');
+    assert.ok(/queue\.join/.test(text), 'the tool call must be visible');
+    assert.ok(/slot\.claim|queue\.status/.test(text), 'the rest of the transcript must be visible');
+    assert.ok(/Approve here/.test(text), 'the human step must be surfaced with its link');
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('journey · the panel warns when the browsed origin is not the configured one', async () => {
+  // The browser is the only party that knows which address it used, so the
+  // browser is what reports the mismatch. Three separate bugs in this project
+  // were this mismatch wearing a network-fault costume.
+  resetNetwork();
+  stub('/api/health', {
+    ...HEALTH,
+    urls: {
+      publicBaseUrl: 'https://somewhere.else:9999',
+      redirectUri: 'https://somewhere.else:9999/api/auth/world/callback',
+      consistent: true,
+      problem: null,
+    },
+  });
+
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
+
+  try {
+    await screen.waitFor((s) => /point somewhere else/i.test(s.text()), 'the origin warning');
+    assert.ok(/somewhere\.else/.test(screen.text()), 'it must name the origin links are built against');
   } finally {
     await screen.unmount();
   }

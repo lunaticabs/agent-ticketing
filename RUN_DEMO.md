@@ -80,6 +80,39 @@ Press it. The same 24-account bot script runs twice.
 > everything. So arrival order decides nothing. Same script, same accounts,
 > advantage gone."
 
+## Beat 1.5 · The agent does the buying, over MCP ⭐️
+
+`/admin` → **Tell the agent to buy a ticket**.
+
+This is the pitch in one button. A human says *"get me a ticket for tonight"* and
+their agent takes the job. The agent is a **real MCP client** — it spawns
+`mcp/server.ts` over stdio and drives the three tools through the official SDK —
+so the transcript on screen is an actual JSON-RPC exchange, not a re-enactment.
+
+Watch it go: `tools/list` → `queue.join` → polls `queue.status` → the slot lands →
+it stops and asks the human (that one step is HTTP, because asking a person is
+what a *host* does, not a tool) → you approve → `slot.claim` → confirmed.
+
+Then point at the board. Every step it took is filed under `agent`, and the one
+step the human took is filed under `human`:
+
+```
+[agent ] queue.joined
+[agent ] approval.requested
+[human ] approval.completed     ← the only thing the agent could not do
+[agent ] approval.executed
+[agent ] slot.confirmed
+```
+
+**4 agent, 1 human.**
+
+> "The agent did the buying. The human did one thing, and it is the one thing an
+> agent cannot do for itself. That is what 'legally, on your behalf' means."
+
+If the draw has not run yet, press **Fast-forward windows** to settle it.
+
+---
+
 ## Beat 2 · The human is asked, at the moment it matters
 
 Terminal two:

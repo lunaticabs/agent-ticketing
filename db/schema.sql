@@ -275,3 +275,29 @@ CREATE TABLE IF NOT EXISTS dev_army (
 );
 
 CREATE INDEX IF NOT EXISTS idx_devarmy_human ON dev_army (continuity_id);
+
+-- ── DevAgentSession (DEMO PROP) ─────────────────────────────────────────────
+-- One row per "the human asked their agent to buy a ticket" demonstration.
+--
+-- The agent in this flow is a REAL MCP client: it spawns `mcp/server.ts` over
+-- stdio and drives the three tools, so what the panel shows is a genuine MCP
+-- transcript rather than a re-enactment of one. The row exists because the run
+-- outlives the HTTP request that starts it — it waits for a draw and then for a
+-- human, and the panel polls for progress.
+CREATE TABLE IF NOT EXISTS dev_agent_session (
+  id             TEXT PRIMARY KEY,
+  handle         TEXT NOT NULL,
+  continuity_id  TEXT NOT NULL REFERENCES human(continuity_id),
+  -- What the human said. Cosmetic, but it is the premise of the demo and the
+  -- panel reads better with it on screen.
+  request_text   TEXT NOT NULL,
+  state          TEXT NOT NULL DEFAULT 'starting'
+                   CHECK (state IN ('starting','queued','waiting_draw','awaiting_human',
+                                    'claiming','done','failed','cancelled')),
+  -- JSON array of steps. A transcript, not a log: every entry is something the
+  -- operator is meant to read off the projector.
+  transcript     TEXT NOT NULL DEFAULT '[]',
+  error          TEXT,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
+);
