@@ -909,6 +909,7 @@ test('journey · the speed-mode knobs are present, and the transfer policy knob 
 test('journey · the panel can tell an MCP agent to buy a ticket, and shows the transcript', async () => {
   resetNetwork();
   stub('/api/health', HEALTH);
+  stub('/api/auth/me', { ok: true, continuityId: 'cid_agent_operator', grants: [] });
   stub('/api/dev/agent', {
     ok: true,
     sessionId: 'agent_test_1',
@@ -948,6 +949,69 @@ test('journey · the panel can tell an MCP agent to buy a ticket, and shows the 
     assert.ok(/queue\.join/.test(text), 'the tool call must be visible');
     assert.ok(/slot\.claim|queue\.status/.test(text), 'the rest of the transcript must be visible');
     assert.ok(/Approve here/.test(text), 'the human step must be surfaced with its link');
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('journey · the agent button is disabled until a human is signed in to act for', async () => {
+  // Found the hard way. The first version created a synthetic human from a typed
+  // handle and had the agent act for it. Against the real IdP that can never
+  // work: the consent step sends a real person to the real provider, they come
+  // back having proved *their own* identity, and the gate compares it with the
+  // synthetic one the approval was bound to. It refuses — correctly — with
+  // `approval_identity_mismatch`, and the demo sits on a countdown that never
+  // resolves. The gate was right; the demo was wrong.
+  resetNetwork();
+  stub('/api/health', HEALTH);
+  stub('/api/auth/me', { ok: false, code: 'not_authenticated' });
+
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
+
+  try {
+    const button = () =>
+      [...screen.container.querySelectorAll('button')].find((b) =>
+        (b.textContent ?? '').includes('Tell the agent to buy a ticket'),
+      ) as HTMLButtonElement;
+
+    await screen.waitFor(() => button() !== undefined, 'the agent button');
+    assert.equal(button().disabled, true, 'no session, no agent');
+    assert.ok(
+      /sign in with World ID first/i.test(screen.text()),
+      'and it must say what to do about it',
+    );
+    // Specifically the chip that names a human — the words "acting for" also
+    // appear in the card's explanation, signed in or not.
+    assert.ok(
+      !/you · cid_/.test(screen.text()),
+      `it must not claim to be acting for anybody yet; got: ${screen.text().slice(0, 300)}`,
+    );
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('journey · with a session, the panel names the human the agent acts for', async () => {
+  resetNetwork();
+  stub('/api/health', HEALTH);
+  stub('/api/auth/me', { ok: true, continuityId: 'cid_bc91647e1c635c08a1a941f964', grants: [] });
+
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
+
+  try {
+    const button = () =>
+      [...screen.container.querySelectorAll('button')].find((b) =>
+        (b.textContent ?? '').includes('Tell the agent to buy a ticket'),
+      ) as HTMLButtonElement;
+
+    await screen.waitFor(() => button() !== undefined && !button().disabled, 'the enabled agent button');
+    // It must name the signed-in human, and it must be that human — not a typed
+    // handle — because that is the identity the consent step will prove.
+    assert.ok(/acting for/i.test(screen.text()), 'the panel must say who the agent acts for');
+    assert.ok(/cid_bc91647e/.test(screen.text()), 'and name the signed-in continuity id');
+    assert.ok(!/demo-human/.test(screen.text()), 'and not offer a typed handle instead');
   } finally {
     await screen.unmount();
   }

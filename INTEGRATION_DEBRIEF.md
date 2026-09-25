@@ -382,6 +382,42 @@ properties, and only the first one is visible in a browser.** Every self-call no
 goes through `lib/selfcall.ts`, which derives the origin from the arriving request
 and turns a TLS failure into a message that names TLS.
 
+### 5c. The demo asked a real human to prove somebody else's identity
+
+Symptom: after approving on the phone, the console kept counting the approval
+window down until it expired and the slot deferred. The callback looked like the
+suspect.
+
+It was not. The audit trail shows the round trip completing and the gate refusing
+one millisecond later:
+
+```
+[human ] approval.completed
+[system] approval.rejected_at_gate   code: approval_identity_mismatch
+[system] slot.approval_expired
+```
+
+The cause: the demo button created a **synthetic** human from a typed handle and
+had the agent act for it, then sent the operator to the **real** World ID provider
+to approve. The provider returned the operator's own identity, the gate compared
+it with the synthetic one the approval was bound to, and refused.
+
+**The gate was right and the demo was wrong**, in the specific way this project
+keeps being wrong: two different notions of "who" — one typed into a box, one
+proved by a provider — with nothing asserting they were the same party.
+
+The fix removes the typed handle. The agent acts for the continuity id resolved
+from the caller's session, which is also what the pitch says: *your* agent acts
+for *you*. Under the local fallback a simulated human is still coherent, because
+the simulated consent resolves to the requester's own identity rather than to
+whoever typed a name; against a real provider the panel asks for a sign-in and
+disables the button until it gets one.
+
+Worth noting for anyone debugging a similar stall: reading the database answered
+this in one query. The approval row said `APPROVED` with a completion timestamp
+inside its own window, which ruled out the callback immediately and pointed at the
+gate's refusal sitting next to it in the audit trail.
+
 ## 6. Reproduction
 
 ```bash

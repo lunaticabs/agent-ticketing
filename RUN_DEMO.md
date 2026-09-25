@@ -100,7 +100,14 @@ when the window closes.
 
 ## Beat 1.6 · The agent does the buying, over MCP ⭐️
 
-`/admin` → **Tell the agent to buy a ticket**.
+**Sign in with World ID first.** `/admin` → **Tell the agent to buy a ticket**.
+
+The panel shows `acting for · you · <continuity id>` when you are signed in, and
+offers a sign-in link when you are not. This is not decoration: the consent step
+sends *you* to the real provider, and you come back having proved *your own*
+identity, so an agent pointed at anybody else produces an approval the gate
+refuses — correctly — with `approval_identity_mismatch`. The countdown then runs
+out and the slot defers.
 
 This is the pitch in one button. A human says *"get me a ticket for tonight"* and
 their agent takes the job. The agent is a **real MCP client** — it spawns

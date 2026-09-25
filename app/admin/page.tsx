@@ -65,8 +65,17 @@ export default function AdminPage() {
   const [army, setArmy] = useState<{ accounts: ArmyMember[]; humans: { continuityId: string; accounts: number }[]; collapseRatio: string } | null>(null);
   const [attacks, setAttacks] = useState<AttackOutcome[]>([]);
   const [contrast, setContrast] = useState<{ verdict: string } | null>(null);
-  const [agentHandle, setAgentHandle] = useState('demo-human');
   const [agentRequest, setAgentRequest] = useState('Get me a ticket for tonight. Ask me when you need me.');
+  /**
+   * Who the agent acts for.
+   *
+   * Not a text field. The consent step sends a real person to the real provider,
+   * and they come back having proved *their own* identity — so an agent pointed at
+   * anyone else produces an approval the gate refuses. The signed-in human is the
+   * only value that can work.
+   */
+  const me = usePoll<{ ok: true; continuityId: string; subject?: string }>('/api/auth/me', 5000);
+  const actingFor = me.data?.continuityId ?? null;
   const [agentSession, setAgentSession] = useState<{
     id: string;
     state: string;
@@ -229,14 +238,14 @@ export default function AdminPage() {
             />
             <Button
               tone="brand"
-              disabled={busy !== null || !devRoutes || (agentSession !== null && !['done', 'failed', 'cancelled'].includes(agentSession.state))}
+              disabled={busy !== null || !devRoutes || !actingFor || (agentSession !== null && !['done', 'failed', 'cancelled'].includes(agentSession.state))}
               onClick={() =>
                 run(
                   'agent',
                   () =>
                     call<{ sessionId: string; continuityId: string; handle: string; request: string }>(
                       '/api/dev/agent',
-                      { json: { handle: agentHandle, request: agentRequest } },
+                      { json: { request: agentRequest } },
                     ),
                   (r) => {
                     setAgentSession({
@@ -261,12 +270,24 @@ export default function AdminPage() {
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
             <span>acting for</span>
-            <input
-              value={agentHandle}
-              onChange={(e) => setAgentHandle(e.target.value)}
-              className="mono w-40 rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1"
-            />
-            <span>· the agent asks for a fresh World ID proof, and only that step needs a person</span>
+            {actingFor ? (
+              <>
+                <span className="mono rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1 text-[var(--color-live)]">
+                  you · {actingFor.slice(0, 16)}…
+                </span>
+                <span>· the agent asks for a fresh World ID proof, and only that step needs a person</span>
+              </>
+            ) : (
+              <>
+                <a href="/api/auth/world/start" className="underline text-[var(--color-alert)]">
+                  sign in with World ID first
+                </a>
+                <span>
+                  · the agent has to act for the human who can answer the consent prompt. Anyone
+                  else, and the gate refuses the approval it produces — correctly.
+                </span>
+              </>
+            )}
           </div>
 
           {agentSession && (

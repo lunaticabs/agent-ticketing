@@ -37,6 +37,23 @@
  * laundrying demo both had it. The rule: `publicBaseUrl()` for links a human
  * opens, request origin for reaching yourself.
  *
+ * ── Why the agent must act for the signed-in human ─────────────────────────
+ *
+ * The first version created a synthetic human from a typed handle and had the
+ * agent act for that. It looked fine and could never work against the real IdP:
+ * the consent step sends a real person to the real provider, they come back
+ * having proved *their own* identity, and the gate compares it with the synthetic
+ * one the approval was bound to. It refuses — correctly — with
+ * `approval_identity_mismatch`, and the demo stalls with a countdown that never
+ * resolves.
+ *
+ * The gate was right and the demo was wrong. "Your agent acts for you" only means
+ * anything if the agent acts for the human who can actually answer the prompt, so
+ * the session takes a continuity id resolved from the caller's session. Under the
+ * local fallback a simulated human is coherent, because the simulated consent
+ * resolves to the requester's own identity; against a real provider there is no
+ * such shortcut and the caller has to be signed in.
+ *
  * ── Why the run is detached ────────────────────────────────────────────────
  *
  * It waits for a draw and then for a person. Neither finishes inside an HTTP
@@ -49,9 +66,8 @@ import { getDb, nowMs } from './db';
 import { newId } from './ids';
 import { audit } from './audit';
 import { PresenceError } from './errors';
-import { ensureSyntheticHuman } from './humans';
+import { getHuman, primaryEvent, type HumanRow } from './humans';
 import { issueAgentToken } from './agenttoken';
-import { primaryEvent } from './humans';
 import { assertDevRoutes } from './devmode';
 import { fetchOrigin, selfCallEnv } from './selfcall';
 
@@ -84,6 +100,18 @@ export interface AgentSessionRow {
   error: string | null;
   created_at: number;
   updated_at: number;
+}
+
+/**
+ * How to refer to a human on screen.
+ *
+ * A simulated human has a readable subject ("demo-human"). A real one has a
+ * pairwise `sub` from the provider — an opaque base32 blob that means nothing to
+ * a reader, so the continuity id is shown instead and labelled as such.
+ */
+function handleOf(human: HumanRow): string {
+  if (human.issuer.startsWith('local:')) return human.subject;
+  return `${human.continuity_id.slice(0, 16)}…`;
 }
 
 /** Sessions whose runner is alive in this process. */
@@ -147,19 +175,31 @@ export interface StartResult {
  * background so the panel can watch it.
  */
 export function startAgentSession(input: {
-  handle?: string;
+  /**
+   * The human the agent acts for.
+   *
+   * Resolved by the route from the caller's session — never typed in. See the
+   * header: a synthetic human here can never satisfy a real consent step.
+   */
+  actingFor: string;
   request?: string;
   /** Origin to call back on — the one the request arrived on, not the configured one. */
   origin: string;
 }): StartResult {
   assertDevRoutes();
 
-  const handle = (input.handle?.trim() || 'demo-human').slice(0, 40);
+  const human = getHuman(input.actingFor);
+  if (!human) {
+    throw new PresenceError('not_authenticated', 'the human this agent would act for does not exist', {
+      httpStatus: 401,
+      hint: 'Start the agent from a signed-in browser session.',
+    });
+  }
+  const handle = handleOf(human);
   const request =
     input.request?.trim() ||
     `Get me a ticket for ${primaryEvent()?.name ?? 'the event'}. I will confirm when you need me.`;
 
-  const human = ensureSyntheticHuman(handle);
   const id = newId('agent');
   const now = nowMs();
 
