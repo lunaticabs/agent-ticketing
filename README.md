@@ -1,0 +1,267 @@
+# Presence
+
+**Your agent queues for you. The moment a slot is handed over, it asks a real
+human to prove they are there. If nobody answers, the slot moves on.**
+
+A queueing and slot-circulation system for events, built for the World
+**"Best Use of World ID for Agents"** track at ETHGlobal Tokyo 2026.
+
+> Not a ticket shop. There is no catalogue, no cart, and no payment integration.
+> What this is: **a queue, an authorization gate, and a circulation policy.**
+
+---
+
+## The 30-second version
+
+```
+人 not  →  🎟️
+```
+
+Three claims, each one demonstrable on stage in under three minutes:
+
+1. **Uniqueness is necessary but not sufficient.** One World ID per person kills
+   "one script, 500 tickets" — but a single scalper with a faster client still
+   wins a first-come-first-served queue. So arrival order decides nothing: the
+   draw gives everyone inside the window equal odds. Flip the switch to FCFS and
+   a 24-account bot army takes 100% of the slots; flip it back and the same army
+   takes exactly its share of the entrant pool.
+
+2. **The gate is on the server, not in a prompt.** `slot.claim` requires a human
+   authorization, and the requirement is enforced behind the tool, not in its
+   description. A model can call `slot.claim` with no approval, with a fabricated
+   reference, with a reused one, or with one bound to somebody else's slot. All
+   four are refused, each with a different machine-readable reason.
+
+3. **Circulation is where scalping actually happens.** Once a ticket is
+   transferable, a scalper does not need to win the queue — he becomes a market
+   maker. So transfers cost friction (a real person, inside a window that
+   expires) and are countable per **human**, not per account. Forty accounts
+   laundering forty slots collapse into two humans and stop dead at four
+   transfers.
+
+---
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env.local          # optional; the defaults work out of the box
+npm run seed
+ENABLE_DEV_ROUTES=1 npm run dev     # dev routes power the demo props
+```
+
+Open **http://localhost:3000/board** — that is the demo.
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | the app (UI + API) |
+| `npm run seed` / `npm run reset` | create / recreate the demo event |
+| `npm run agent` | **the agent, as its own process** |
+| `npm run mcp` | the MCP server (stdio) |
+| `npm run bots` | the bot army (`-- --compare` for the FCFS/lottery side-by-side) |
+| `npm run spike` | re-verify every assumption against the live sandbox IdP |
+| `npm test` | 41 in-process invariant tests (one per red line) |
+| `npm run e2e` | 9 live HTTP checks: all six demo beats + the failure matrix |
+| `npm run mcp-check` | 10 live MCP checks |
+| `npm run security-check` | the T-7.2 self-check (run after `npm run build`) |
+
+Pre-flight before a demo:
+
+```bash
+npm test && npm run e2e && npm run mcp-check && npm run security-check
+```
+
+---
+
+## Where the World ID integration lives
+
+**One directory. Nothing outside it may touch World ID.**
+
+```
+worldid/
+├── index.ts        the only public surface
+├── config.ts       ← the environment is pinned here, as a literal constant
+├── oidc.ts         authorization code + S256 PKCE (openid-client)
+├── device.ts       RFC 8628 device grant — the headless-agent path
+├── local.ts        the disclosed fallback; substitutes the IdP, never the gate
+├── nullifier.ts    RED LINE 1, reconstructed for an OIDC provider
+└── requests.ts     in-flight interactions, in the database
+```
+
+Two guards enforce the boundary, and `npm run security-check` fails the build if
+either is violated:
+
+* no file outside `worldid/` may import `openid-client`, name the issuer host, or
+  call an OIDC endpoint;
+* no exported function accepts an `environment` argument — it is a constant, so a
+  client cannot select an environment that accepts test proofs.
+
+### The finding that shaped the design
+
+The TODO assumed a World-ID-style verify endpoint that returns a nullifier.
+**There isn't one.** The Human Continuity IdP is a plain OIDC provider: the ID
+token carries `iss, sub, aud, exp, iat, jti, nonce, auth_time, acr, amr`, and
+nothing resembling `nullifier`, `proof`, or `verification_level`.
+
+That matters because the whole anti-scalping argument rests on
+
+```
+nullifier = human × rp_id × action
+```
+
+which is what makes "one person, one ticket" fall out of the protocol for free.
+OIDC has no notion of your application's actions, so the relying party has to
+reconstruct it:
+
+```ts
+nullifier = sha256("presence/v1/nullifier" | issuer | sub | action | signal)
+```
+
+plus `UNIQUE (bound_action, continuity_id)` in the database. Same observable
+behaviour. The full reasoning is in `worldid/nullifier.ts`, `SPIKE_NOTES.md` (S-7)
+and `INTEGRATION_DEBRIEF.md`.
+
+---
+
+## Is this running the real IdP or the fallback?
+
+`GET /api/health` answers in one line, and the UI shows a permanent banner when
+it matters.
+
+```json
+{ "idp": { "mode": "local", "degraded": true, "hasCredentials": false } }
+```
+
+**Registering an OIDC client requires a human with a Google account**
+(`sandbox.auth.world.org/portal`), and the client secret is displayed exactly
+once. So until those credentials exist, the app runs the documented local
+fallback.
+
+What the fallback does and does not do:
+
+| | |
+|---|---|
+| ✅ | issues a server-signed, per-attempt assertion |
+| ✅ | still enforces binding, freshness (`auth_time` vs `max_age=0`) and one-time consumption |
+| ✅ | still consumes a nullifier through a database `PRIMARY KEY` |
+| ❌ | **does not prove humanness.** There is no World ID proof behind it. |
+
+To switch to the real IdP, set `WORLDID_CLIENT_ID` and `WORLDID_CLIENT_SECRET` in
+`.env.local`. **No code changes** — `idpMode()` picks it up and the banner
+disappears.
+
+### ⚠️ Disclosed demo bypass
+
+`ENABLE_DEV_ROUTES=1` turns on `/api/dev/*`, which can create simulated humans
+that bypass World ID entirely. It exists because "40 accounts, 2 humans" cannot
+be built from real proofs on a stage — you cannot summon 40 verified people.
+
+* Off by default; when off, `/api/dev/*` returns **404**.
+* Shares **no code branch** with the real verification path: simulated humans are
+  written straight to the database and never touch `worldid/`.
+* The startup banner and the board both say so out loud.
+* `npm test` asserts the 404.
+
+Hiding it would be the actual problem. Saying it is fine.
+
+---
+
+## The six demo beats
+
+Drive them from **`/admin`**. Everything is a button.
+
+| # | Beat | What it proves |
+|---|---|---|
+| 1 | FCFS beaten by a bot army → switch to the draw → the advantage vanishes | A queue that respects arrival order hands the event to whoever has the fastest client. Measured as a z-score against the hypergeometric null, not a hand-picked threshold. |
+| 2 | Slot allocated → agent asks → human approves on their own device → confirmed | The track's "at the moment" requirement, with all four stages recorded. |
+| 3 | Nobody approves → the window closes → **the slot defers** | The failure path *is* the product. The human who missed it cannot buy afterwards, even holding a perfectly valid proof. |
+| 4 | 40 accounts receive transfers → collapse into 2 continuity ids → **the cap holds** | The centrepiece. With `policy=open` so the cap is the *only* rule in the way. |
+| 5 | A normal transfer between friends | Not hidden: the friction is on screen. That is the product claim — courtesy to a friend, cost to a scalper. |
+| 6 | Replay / retarget / environment swap | Each refused with its own code, each ending in a database read-back confirming nothing ran. |
+
+---
+
+## Layout
+
+```
+app/            Next.js pages + API routes
+  board/        the projector board (1s poll)
+  admin/        demo controls
+  auth/local/   the fallback consent screen
+  transfer/     the recipient's side of a transfer
+lib/            all business logic
+  gate.ts       ← THE gate. every surface calls this one function.
+  queue.ts      join, the draw, arrival-order independence
+  slots.ts      the state machine: allocate → expire → DEFER
+  transfer.ts   the three lines of defence
+  consume.ts    one-time use, as a database constraint
+  approval.ts   the four observable stages
+  attacks.ts    the three attack demonstrations
+worldid/        the only door to World ID
+agent/          the standalone agent process
+mcp/            the MCP surface
+scripts/        spike, e2e, mcp-check, security-check, bot-army
+db/             schema.sql, seed, reset
+tests/          41 invariant tests, one per red line
+```
+
+---
+
+## Design notes worth knowing before you read the code
+
+**The state you read is the state as of now.** There is no background timer
+anywhere. `sweep()` advances every expired deadline and is called at the top of
+every read and every write. Nothing can drift out of sync with the clock, and
+there is no cron to forget to start.
+
+**Deferral walks forward, never back.** A candidate whose window closed is marked
+served (`queue_entry.allocated_at`) and is never a candidate again, so the draw
+cannot loop on the same person. `EXPIRED` is deliberately *transient*: the slot
+is recorded as expired and immediately returned to the pool, because the
+allocation pass only ever looks at `AVAILABLE`.
+
+**`total_slots` is a capacity, not a row count.** These can diverge — the demo
+props legitimately build extra inventory — so allocation is budgeted against the
+declared capacity. A test covers it; an earlier version got this wrong and made
+the speed-contrast statistics meaningless.
+
+**Transfer rule 3 and the inbound cap had to be reconciled.** "The recipient must
+not already hold a slot" read literally makes a cap of 2 unreachable: the first
+transfer hands them a slot, so the second is refused for already holding one. The
+reading that gives both rules meaning — and the one the concept doc's own
+annotation points at — is that rule 3 bars double-dipping the *primary
+allocation*, while receiving by transfer is the capped allowance the cap governs.
+`acquired_via` is what distinguishes them.
+
+**The board is not decoration.** Almost every claim here is about something *not*
+happening, and an unobservable claim is indistinguishable from a bluff. So the
+countdown, the deferrals and the refusals-with-reasons are all on screen.
+
+---
+
+## Honest limitations
+
+* **Presence is not consent.** Fresh authentication proves a human is there, not
+  that they are willing. Someone paid or pressured to press approve defeats every
+  defence in this repository.
+* **Hired humans beat this.** If the resale premium is large enough, paying people
+  to attend is simply a cost of business. Technology changes who collects the
+  premium, not whether it exists.
+* **The friction lands on normal users too.** Giving a ticket to a friend costs a
+  live moment. That is a deliberate trade-off, not a bug.
+* **Continuity is stable for an existing World identity, not across
+  re-enrolment.** The IdP's own guide notes that a new World identity can resolve
+  to a new IdP account, and World ID cannot distinguish a fan from a mercenary.
+* **The primary allocation stage is not linked to the purchase in this build** —
+  see `INTEGRATION_DEBRIEF.md` for what that would take and why it was left out.
+
+## Documentation
+
+| File | What it is |
+|---|---|
+| [`SPIKE_NOTES.md`](SPIKE_NOTES.md) | every assumption, checked against the live sandbox, with evidence |
+| [`FAILURE_MATRIX.md`](FAILURE_MATRIX.md) | 45 refusal scenarios and how each was verified |
+| [`INTEGRATION_DEBRIEF.md`](INTEGRATION_DEBRIEF.md) | the track's required integration retrospective |
+| [`RUN_DEMO.md`](RUN_DEMO.md) | the five-minute runbook for the six beats, with the narration |
+| [`agent-ticketing-concept.md`](agent-ticketing-concept.md) | why the design is shaped this way |
+| [`agent-ticketing-todo.md`](agent-ticketing-todo.md) | the build plan this implements |

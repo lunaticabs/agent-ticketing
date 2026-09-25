@@ -1,0 +1,145 @@
+# FAILURE_MATRIX.md — every refusal, and proof that nothing ran
+
+> **Task**: T-7.1 · **Produced by**: `npm run e2e` (live HTTP) and `npm test` (in-process)
+> **Track requirement 3**: *"演示失败路径：拒绝 / 过期 / 取消时，受保护动作不发生"*
+
+Every row below was **executed**, not reasoned about. The `verify` column is a
+database read taken after the refusal, because "it returned an error" and "the
+slot did not move" are different claims and only the second one matters.
+
+The governing rule for all of it:
+
+> A protected action happens **only** inside the single transaction in
+> `lib/gate.ts` (or its transfer counterpart) that consumes a nullifier. A refusal
+> returns before that transaction opens. There is no code path where a check
+> fails and the write still happens — that is a structural property, not a
+> convention.
+
+---
+
+## 1. Authorization failures
+
+| # | Scenario | Machine code | HTTP | What the caller is told | Protected action | Verified by |
+|---|---|---|---|---|---|---|
+| 1 | `slot.claim` with no approval at all | `approval_required` | 428 | "this action requires a human authorization; a proof of authorization must accompany the call" + a hint to obtain one | **did not run** | `slot.state` still `ALLOCATED`; `consumed_proof` count unchanged |
+| 2 | `slot.claim` with a fabricated reference | `approval_not_found` | 404 | "the presented approval is not known to this server" | **did not run** | same |
+| 3 | A body carrying `{ok: true}` or `clientResult` | `untrusted_client_result` | 400 | names the offending field and states the server verifies itself | **did not run** | request rejected before the gate |
+| 4 | A body carrying `environment` (any nesting) | `environment_pinned` | 400 | echoes what was received and what the server pins | **did not run** | request rejected before the gate |
+| 5 | No session and no agent credential | `not_authenticated` | 401 | "sign in with World ID before joining the queue" | **did not run** | 401 |
+| 6 | Agent token without the required scope | `grant_scope_insufficient` | 403 | lists held vs required scopes | **did not run** | 403 |
+| 7 | Human pressed Deny | `approval_denied` | 400 | "the human denied this request" | **did not run** | approval state `DENIED`; slot untouched |
+| 8 | Stale authentication (`max_age=0` violated) | `not_fresh` | 400 | "authentication is older than the freshness window" / "predates the authorization request" | **did not run** | `consumed_proof` count unchanged |
+| 9 | Proof predates the approval request | `not_fresh` | 400 | "this authentication predates the authorization request, so it is not a fresh proof for this action" | **did not run** | same |
+| 10 | Approval expired before use | `approval_expired` | 410 | "this request expired before it was used" | **did not run** | same |
+| 11 | Proof belongs to a different human | `approval_identity_mismatch` | 403 | names both humans | **did not run** | same |
+| 12 | IdP unreachable / attempt failed | `approval_not_approved` | 400 | the underlying failure text | **did not run** | same |
+
+## 2. Binding failures (RED LINE 6)
+
+| # | Scenario | Machine code | HTTP | Protected action | Verified by |
+|---|---|---|---|---|---|
+| 13 | Approval re-targeted at a different slot | `approval_signal_mismatch` | 403 | **did not run** | slot holders unchanged |
+| 14 | Approval with a swapped recipient in the signal | `approval_signal_mismatch` | 403 | **did not run** | same |
+| 15 | A transfer proof presented to authorize a purchase | `approval_action_mismatch` | 403 | **did not run** | same |
+| 16 | Approval bound to a different slot than the caller's allocation | `approval_signal_mismatch` | 403 | **did not run** | same |
+
+## 3. Replay and duplication (RED LINE 5)
+
+| # | Scenario | Machine code | HTTP | Protected action | Verified by |
+|---|---|---|---|---|---|
+| 17 | The same approval presented twice | `already_owns_entitlement` | 409 | **did not run** | one `CONFIRMED` slot, not two |
+| 18 | The same nullifier driven straight at the table | `proof_replay_detected` | 409 | **did not run** | rolled-back transaction; row count unchanged |
+| 19 | **Two simultaneous claims, same approval, two sockets** | one 200 + one `already_owns_entitlement` | — | **ran exactly once** | `confirmed slots = 1` |
+| 20 | Same human, second purchase of the same event | `already_owns_entitlement` | 409 | **did not run** | `consumed_proof` = 1 for that action |
+| 21 | A consumption inside a transaction that then throws | — | — | **did not run** | the inserted row rolled back with it |
+
+## 4. Queue and slot lifecycle (T-2.2, T-2.3)
+
+| # | Scenario | Machine code | HTTP | Protected action | Verified by |
+|---|---|---|---|---|---|
+| 22 | Joining after the draw was settled | `queue_closed` | 400 | entry not created | `queue_entry` count unchanged |
+| 23 | Joining twice | — (idempotent) | 200 | returns the existing entry | count stays 1 |
+| 24 | Claiming with no allocation | `no_slot_allocated` | 400 | **did not run** | — |
+| 25 | Claiming after the window closed and the slot deferred | `deferred_to_next_candidate` | 410 | **did not run** | `consumed_proof` = 0 for that human; the slot is held by someone else |
+| 26 | **Claiming after deferral with a fully valid, fresh, correctly-bound proof** | `deferred_to_next_candidate` | 410 | **did not run** | same — this is the row that shows deferral is final |
+| 27 | Slot already confirmed to this human | `already_owns_entitlement` | 409 | **did not run** | — |
+| 28 | Allocating more slots than `total_slots` | — | — | capped | allocation count = `total_slots` |
+
+## 5. Transfer failures (T-4.x)
+
+| # | Scenario | Machine code | HTTP | Protected action | Verified by |
+|---|---|---|---|---|---|
+| 29 | Transfer under `locked` policy | `transfer_policy_locked` | 409 | offer not created | slot stays `CONFIRMED` |
+| 30 | Second transfer of a slot under `gift` | `transfer_gift_already_used` | 409 | **did not run** | `gift_used` = 1 |
+| 31 | Offering a slot you do not hold | `transfer_not_owner` | 403 | **did not run** | — |
+| 32 | Transferring to yourself | `transfer_recipient_is_holder` | 400 | **did not run** | — |
+| 33 | Recipient already holds a drawn slot | `recipient_already_holds_slot` | 403 | **did not run** | — |
+| 34 | Sender opens a link addressed to the recipient | `approval_identity_mismatch` | 403 | **did not run** | slot holder unchanged |
+| 35 | Sender authorizes on the recipient's behalf | `approval_identity_mismatch` | 403 | **did not run** | same |
+| 36 | Third party completes someone else's transfer | `approval_identity_mismatch` | 403 | **did not run** | same |
+| 37 | **Third inbound transfer to the same human** | `inbound_cap_reached` | 409 | **did not run** | `transfer_inbound` = 2 |
+| 38 | **A brand-new account for that same human** | `inbound_cap_reached` | 409 | **did not run** | the counter is keyed on `continuity_id`, so the new account lands on the exhausted one |
+| 39 | Transfer TTL elapsed without completion | `transfer_expired` | 410 | **did not run** | slot back to `CONFIRMED` with the original holder |
+| 40 | Completing a transfer twice | `transfer_expired` | 410 | **did not run** | conditional UPDATE returns 0 changes; the whole transaction rolls back |
+
+## 6. Grants (T-5.1)
+
+| # | Scenario | Machine code | HTTP | Verified by |
+|---|---|---|---|---|
+| 41 | Using an expired grant | — (no grant found) | — | `activeGrant()` returns `undefined` at read time, so the privilege is already gone |
+| 42 | Using a revoked grant | — | — | same; revocation is a row update with no cache in front of it |
+| 43 | Unknown scope | `bad_request` | 400 | — |
+
+## 7. Demo-surface failures (T-6.2)
+
+| # | Scenario | Machine code | HTTP | Verified by |
+|---|---|---|---|---|
+| 44 | Any `/api/dev/*` route with `ENABLE_DEV_ROUTES` unset | `dev_routes_disabled` | **404** | indistinguishable from a route that was never deployed |
+| 45 | `/api/dev/impersonate` with no handle | `bad_request` | 400 | — |
+
+---
+
+## What a failure looks like to a caller
+
+Every refusal is the same JSON shape, which is what makes the MCP surface work
+without special-casing:
+
+```json
+{
+  "ok": false,
+  "code": "inbound_cap_reached",
+  "message": "this human has already received 2 of 2 allowed inbound transfers for this event",
+  "invariant": "RED LINE 9 — the cap is keyed on the human, so a new account does not reset it",
+  "details": { "eventId": "evt_tokyo_night", "recipientContinuityId": "cid_…", "used": 2, "cap": 2 },
+  "hint": "A fresh account does not help: the counter follows the human, not the account."
+}
+```
+
+| Field | Purpose |
+|---|---|
+| `code` | stable, machine-readable; safe to branch on; never changes wording |
+| `message` | one sentence, safe to put on a projector |
+| `invariant` | **which red line this refusal protects** — so a refusal explains the design rather than just reporting an error |
+| `details` | the values involved, for logs and debugging |
+| `hint` | what a model or a person should do next |
+
+`hint` exists because of a specific requirement: the MCP surface must return
+*something a model can act on*. A refusal that says only "forbidden" invites
+retries and workarounds; a refusal that says "the window closed and the slot
+moved on; do not retry" ends the loop.
+
+---
+
+## How this file was produced
+
+```
+npm test              # 40 in-process invariant tests, incl. every red line
+npm run e2e           # 9 live HTTP checks: six demo beats + this failure matrix
+                      #   + a real two-socket concurrency race
+npm run mcp-check     # 10 live MCP checks, incl. claim-without-approval
+npm run security-check
+```
+
+Sections 1–7 are covered between them. Run all four before a demo; each exits
+non-zero on failure, so `npm test && npm run e2e && npm run mcp-check &&
+npm run security-check` is the pre-flight.
