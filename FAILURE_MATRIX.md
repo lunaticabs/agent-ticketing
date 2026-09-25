@@ -90,6 +90,18 @@ The governing rule for all of it:
 | 42 | Using a revoked grant | — | — | same; revocation is a row update with no cache in front of it |
 | 43 | Unknown scope | `bad_request` | 400 | — |
 
+## 6b. Misconfiguration failures (caught at startup, not at the IdP)
+
+| # | Scenario | Where it surfaces | What the operator is told |
+|---|---|---|---|
+| 43a | `PRESENCE_PUBLIC_URL` and `WORLDID_REDIRECT_URI` disagree on origin | startup banner + `GET /api/health` → `urls.consistent: false` | both sides named, plus *"links the app renders will not open"* and the easiest fix |
+| 43b | Real IdP credentials configured, but the public base URL is `http://` | startup banner | *"The sandbox portal only accepts https callbacks, so the browser will be redirected to a scheme this server is not serving."* |
+| 43c | `WORLDID_REDIRECT_URI` is not a parseable URL | startup banner + `urls.problem` | named as such; link building keeps working off the default rather than throwing mid-request |
+
+All three are printed before the first request (`instrumentation.ts`), because a
+consistency warning that only appears once somebody happens to load a particular
+page is not a warning.
+
 ## 7. Demo-surface failures (T-6.2)
 
 | # | Scenario | Machine code | HTTP | Verified by |

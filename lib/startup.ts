@@ -8,7 +8,15 @@
  *   * `ENABLE_DEV_ROUTES=1` — the impersonation bypass is live
  *   * local IdP fallback    — identity is simulated (the gate is still real)
  */
-import { hasExplicitSigningKey, idpCredentials, idpMode, WORLDID_ISSUER, redirectUri } from '../worldid/config';
+import {
+  baseUrlConsistency,
+  hasExplicitSigningKey,
+  idpCredentials,
+  idpMode,
+  publicBaseUrl,
+  WORLDID_ISSUER,
+  redirectUri,
+} from '../worldid/config';
 import { devRoutesEnabled } from './errors';
 
 let printed = false;
@@ -23,11 +31,37 @@ export function printStartupBanner(): void {
   lines.push('  ┌────────────────────────────────────────────────────────────────────┐');
   lines.push('  │  PRESENCE · agent queueing with fresh human authorization          │');
   lines.push('  └────────────────────────────────────────────────────────────────────┘');
+  const baseUrl = publicBaseUrl();
+  const urls = baseUrlConsistency();
+
   lines.push(`  World ID issuer : ${WORLDID_ISSUER}`);
   lines.push(`  IdP mode        : ${mode}${mode === 'local' ? '   ⚠️  LOCAL FALLBACK' : ''}`);
+  lines.push(`  Public base URL : ${baseUrl}`);
   lines.push(`  Redirect URI    : ${redirectUri()}`);
   lines.push(`  Dev routes      : ${devRoutesEnabled() ? 'ENABLED' : 'disabled'}`);
   lines.push('');
+
+  if (!urls.consistent) {
+    lines.push('  ⚠️  URL MISMATCH — links the app renders will not open');
+    lines.push(`      ${urls.detail}`);
+    lines.push('      PRESENCE_PUBLIC_URL is what consent and transfer links are built');
+    lines.push('      from; WORLDID_REDIRECT_URI is what the IdP sends the browser back');
+    lines.push('      to. They must share an origin.');
+    lines.push(`      Easiest fix: drop PRESENCE_PUBLIC_URL and let it derive from the`);
+    lines.push('      redirect URI, or set it to that origin.');
+    lines.push('');
+  }
+
+  if (mode !== 'local' && baseUrl.startsWith('http://')) {
+    // A real IdP registration requires an https callback — the sandbox portal
+    // rejects an http loopback URL outright. Serving http here means the
+    // redirect will land on a scheme nothing is listening on.
+    lines.push('  ⚠️  REAL IDP CREDENTIALS, BUT THE PUBLIC BASE URL IS http://');
+    lines.push('      The sandbox portal only accepts https callbacks, so the browser');
+    lines.push('      will be redirected to a scheme this server is not serving.');
+    lines.push('      Run `npm run dev:https` instead. See SPIKE_NOTES.md S-0.');
+    lines.push('');
+  }
 
   if (mode === 'local') {
     lines.push('  ⚠️  LOCAL IDP FALLBACK IS ACTIVE');

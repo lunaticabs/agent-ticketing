@@ -20,7 +20,10 @@
  */
 import { setTimeout as delay } from 'node:timers/promises';
 
-const BASE = process.env.PRESENCE_BASE_URL?.trim() || 'http://localhost:3000';
+import { describeTarget, reportPreflight, PreflightError, requireDevRoutes, requireLocalIdp, resolveTarget } from './preflight';
+
+/** Resolved in `main`, once the server has been found. */
+let BASE = '';
 
 interface BotArmyShape {
   allocated: { bots: number; humans: number; empty: number };
@@ -588,24 +591,20 @@ async function concurrencyCheck(): Promise<boolean> {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<number> {
-  console.log('');
-  console.log('  PRESENCE · end-to-end rehearsal');
-  console.log(`  target: ${BASE}`);
-  console.log(`  ${'─'.repeat(88)}`);
-
   try {
-    const health = await api<{ ok: boolean; devRoutes: boolean; idp: { mode: string } }>('/api/health');
-    if (!health.body.ok) throw new Error('health check failed');
-    if (!health.body.devRoutes) {
-      console.error('\n  ENABLE_DEV_ROUTES is off. Restart with: ENABLE_DEV_ROUTES=1 npm run dev\n');
-      return 2;
-    }
-    console.log(`  server up · idp mode ${health.body.idp.mode}`);
+    const target = await resolveTarget();
+    BASE = target.base;
+    requireDevRoutes(target);
+    // The six beats include "the agent asks a human and the human approves",
+    // which a script can only complete against the simulated provider.
+    requireLocalIdp(target, 'the end-to-end rehearsal');
+
+    console.log('');
+    console.log(describeTarget(target, 'end-to-end rehearsal'));
+    console.log(`  ${'─'.repeat(88)}`);
   } catch (err) {
-    console.error(`\n  Cannot reach ${BASE}. Start the server first:`);
-    console.error('    ENABLE_DEV_ROUTES=1 npm run dev\n');
-    console.error(`  (${err instanceof Error ? err.message : String(err)})`);
-    return 2;
+    if (err instanceof PreflightError) return reportPreflight(err);
+    throw err;
   }
 
   console.log('');

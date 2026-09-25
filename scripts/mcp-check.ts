@@ -26,7 +26,10 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-const BASE = process.env.PRESENCE_BASE_URL?.trim() || 'http://localhost:3000';
+import { describeTarget, reportPreflight, PreflightError, requireDevRoutes, requireLocalIdp, resolveTarget } from './preflight';
+
+/** Resolved in `main`, once the server has been found. */
+let BASE = '';
 
 interface Check {
   name: string;
@@ -114,21 +117,18 @@ async function connectMcp(token: string): Promise<Client> {
 }
 
 async function main(): Promise<number> {
-  console.log('');
-  console.log('  PRESENCE · MCP acceptance check (T-3.4)');
-  console.log(`  target: ${BASE}`);
-  console.log(`  ${'─'.repeat(88)}`);
-
   try {
-    const health = await http<{ ok: boolean; devRoutes: boolean }>('/api/health');
-    if (!health.body.ok) throw new Error('health failed');
-    if (!health.body.devRoutes) {
-      console.error('\n  ENABLE_DEV_ROUTES is off. Restart with: ENABLE_DEV_ROUTES=1 npm run dev\n');
-      return 2;
-    }
-  } catch {
-    console.error(`\n  Cannot reach ${BASE}. Start the server first:\n    ENABLE_DEV_ROUTES=1 npm run dev\n`);
-    return 2;
+    const target = await resolveTarget();
+    BASE = target.base;
+    requireDevRoutes(target);
+    requireLocalIdp(target, 'the MCP acceptance check');
+
+    console.log('');
+    console.log(describeTarget(target, 'MCP acceptance check (T-3.4)'));
+    console.log(`  ${'─'.repeat(88)}`);
+  } catch (err) {
+    if (err instanceof PreflightError) return reportPreflight(err);
+    throw err;
   }
 
   await http('/api/dev/reset', { body: {} });

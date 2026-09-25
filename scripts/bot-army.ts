@@ -20,7 +20,7 @@
  * renders the answer. That also means it keeps working if the database ever
  * stops being a local file.
  */
-const BASE = (process.env.PRESENCE_BASE_URL?.trim() || 'http://localhost:3000').replace(/\/+$/, '');
+import { describeTarget, reportPreflight, PreflightError, requireDevRoutes, resolveTarget } from './preflight';
 
 interface Shares {
   botEntrants: number;
@@ -80,26 +80,15 @@ async function main(): Promise<number> {
   const compare = argv.includes('--compare');
 
   // Fail early and legibly if the server is not usable.
+  let BASE: string;
   try {
-    const res = await fetch(`${BASE}/api/health`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const health = (await res.json()) as { devRoutes: boolean };
-    if (!health.devRoutes) {
-      console.error('');
-      console.error('  ENABLE_DEV_ROUTES is off on the SERVER, so simulated bot identities');
-      console.error('  cannot be created. The flag belongs to the server process:');
-      console.error('');
-      console.error('    ENABLE_DEV_ROUTES=1 npm run dev');
-      console.error('');
-      return 2;
-    }
+    const target = await resolveTarget();
+    BASE = target.base;
+    requireDevRoutes(target);
+    console.log(describeTarget(target, 'bot army'));
   } catch (err) {
-    console.error('');
-    console.error(`  Cannot reach ${BASE}. Start the server first:`);
-    console.error('    ENABLE_DEV_ROUTES=1 npm run dev');
-    console.error('');
-    console.error(`  (${err instanceof Error ? err.message : String(err)})`);
-    return 2;
+    if (err instanceof PreflightError) return reportPreflight(err);
+    throw err;
   }
 
   const res = await fetch(`${BASE}/api/dev/bots`, {

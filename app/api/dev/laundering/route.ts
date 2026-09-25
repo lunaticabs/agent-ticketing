@@ -1,6 +1,5 @@
 import { json, route, readJson } from '@/lib/api';
 import { assertDevRoutes, runLaunderingDemo } from '@/lib/devmode';
-import { publicBaseUrl } from '@/worldid/config';
 
 /**
  * T-6.2 / demo beat 4 — the laundering simulation, in one call.
@@ -22,8 +21,10 @@ export const POST = route(async (req) => {
     accounts: typeof body.accounts === 'number' ? body.accounts : undefined,
     humans: typeof body.humans === 'number' ? body.humans : undefined,
     // The consent step goes back out over HTTP, to the same endpoint the
-    // fallback consent screen posts to.
-    baseUrl: publicBaseUrl(),
+    // fallback consent screen posts to. Use the origin the request arrived on,
+    // not the public base URL: they can differ, and dialling the public URL from
+    // inside the process then fails with a bare `fetch failed`.
+    baseUrl: new URL(req.url).origin,
   });
   return json({ ok: true, ...result });
 });

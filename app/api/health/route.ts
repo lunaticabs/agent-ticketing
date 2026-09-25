@@ -2,7 +2,12 @@ import { json, route } from '@/lib/api';
 import { getEvent, listEvents } from '@/lib/humans';
 import { idpStatus } from '@/worldid';
 import { devRoutesEnabled } from '@/lib/errors';
-import { WORLDID_ENVIRONMENT } from '@/worldid/config';
+import {
+  WORLDID_ENVIRONMENT,
+  baseUrlConsistency,
+  publicBaseUrl,
+  redirectUri,
+} from '@/worldid/config';
 
 /**
  * T-0.1 acceptance: `/health` returns 200.
@@ -25,6 +30,15 @@ export const GET = route(async () => {
       degraded: idp.degraded,
       hasCredentials: idp.hasCredentials,
       detail: idp.detail,
+    },
+    // Exposed so a scheme mismatch is checkable from the outside, without
+    // reading the server's stdout. `curl /api/health` is the fastest way to
+    // answer "is this deployment consistent with its portal registration?".
+    urls: {
+      publicBaseUrl: publicBaseUrl(),
+      redirectUri: redirectUri(),
+      consistent: baseUrlConsistency().consistent,
+      problem: baseUrlConsistency().detail,
     },
     devRoutes: devRoutesEnabled(),
     event: event

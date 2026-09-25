@@ -50,21 +50,35 @@ npm run seed
 ENABLE_DEV_ROUTES=1 npm run dev     # dev routes power the demo props
 ```
 
-Open **http://localhost:3000/board** — that is the demo.
+Open the URL it prints — **http://localhost:3000/board** — and that is the demo.
 
-> **Connecting the real IdP instead?** Use `ENABLE_DEV_ROUTES=1 npm run dev:https`.
-> The sandbox portal refuses an `http://` callback — its registration form says
-> *"Use exact HTTPS callback URLs"* and rejects a loopback `http://` URL with a
-> generic *"Check the values and try again."* `dev:https` generates a self-signed
-> certificate for `localhost`, starts Next on TLS, and points
-> `PRESENCE_PUBLIC_URL` and `WORLDID_REDIRECT_URI` at it so every absolute URL the
-> app builds matches. Register `https://localhost:3000/api/auth/world/callback`.
-> See SPIKE_NOTES.md S-0.
+**`npm run dev` chooses its own scheme, and it prints which one and why.** With
+no OIDC client registered it serves plain HTTP, because identity is simulated
+locally and TLS would only add a certificate warning. Register a client and it
+switches to HTTPS on its own, because the sandbox portal refuses an `http://`
+callback: its form says *"Use exact HTTPS callback URLs"* and rejects a loopback
+`http://` URL with a generic *"Check the values and try again."*
+
+```
+  HTTPS — an https URL is already configured for this deployment
+  url            https://localhost:3000
+  redirect URI   https://localhost:3000/api/auth/world/callback
+```
+
+The certificate is self-signed, so the browser warns once — *Advanced →
+Proceed*. Nothing in the OIDC flow needs it to be trusted. Override with
+`npm run dev:http` or `npm run dev:https` when you want to be explicit.
+
+> **One origin, or links break.** Every absolute URL the app builds — consent
+> links, transfer links, the OIDC `redirect_uri` — must share an origin. The
+> redirect URI is authoritative: when `PRESENCE_PUBLIC_URL` is unset the origin
+> is derived from it. If you set both and they disagree, startup says so, and
+> `GET /api/health` reports it under `urls`. See SPIKE_NOTES.md S-0.
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | the app (UI + API) |
-| `npm run dev:https` | the same over TLS — **required if you register a real OIDC client** |
+| `npm run dev` | the app, over whichever scheme this configuration needs |
+| `npm run dev:http` / `dev:https` | force the scheme |
 | `npm run seed` / `npm run reset` | create / recreate the demo event |
 | `npm run agent` | **the agent, as its own process** |
 | `npm run mcp` | the MCP server (stdio) |
@@ -80,6 +94,12 @@ Pre-flight before a demo:
 ```bash
 npm test && npm run e2e && npm run mcp-check && npm run security-check
 ```
+
+The live checks (`e2e`, `mcp-check`, `bots`) find the server themselves, over
+http or https, and check their own preconditions before running. They complete
+the consent screen programmatically, so they need the fallback IdP — with a real
+client registered, start the server with `PRESENCE_IDP_MODE=local` to verify
+against the fallback without unregistering anything. See RUN_DEMO.md.
 
 ---
 

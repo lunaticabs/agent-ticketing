@@ -20,6 +20,22 @@ npm test && npm run e2e && npm run mcp-check
 
 Green means the six beats are rehearsed. On `/admin`, press **Reset demo state**.
 
+> **The live checks need the fallback idp.** `e2e` and `mcp-check` press Approve
+> on your behalf, which is only possible when the identity provider is simulated.
+> If you have registered a real OIDC client, the server runs in `oidc` mode and
+> the scripts will say so rather than half-failing:
+>
+> ```
+> ✖ the end-to-end rehearsal needs the local fallback idp, but
+>   http://localhost:3000 is running in "oidc" mode
+>   restart the server with:  PRESENCE_IDP_MODE=local ENABLE_DEV_ROUTES=1 npm run dev
+> ```
+>
+> `PRESENCE_IDP_MODE=local` forces the fallback even with credentials present, so
+> verifying the six beats never means unregistering anything. Run the real
+> `oidc` path by hand, the way a judge would: sign in, get a slot, approve on the
+> phone.
+
 ---
 
 ## Opening line

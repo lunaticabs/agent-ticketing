@@ -90,14 +90,90 @@ export function idpMode(): IdpMode {
   return 'oidc';
 }
 
-/** Public base URL used to build the exact registered redirect URI. */
+/**
+ * ============================================================================
+ *  Where this deployment lives — ONE answer, derived, never two.
+ * ============================================================================
+ *
+ * There are two settings that describe the same thing, and an earlier version
+ * read each one independently:
+ *
+ *   PRESENCE_PUBLIC_URL   used to build consent links and transfer links
+ *   WORLDID_REDIRECT_URI  sent to the IdP, and must match the portal byte for byte
+ *
+ * Left independent they can disagree, and the failure is silent and confusing:
+ * with only `WORLDID_REDIRECT_URI` set to an https:// value, the login redirect
+ * went to https while every link the app rendered pointed at http, and the
+ * server was listening on http. Three different answers to "where am I", none of
+ * them checked against the others.
+ *
+ * So the redirect URI wins when it is set. It is the one value that *cannot* be
+ * approximated — the portal compares it byte for byte, including scheme — which
+ * makes it the most reliable statement of where this deployment actually is.
+ * Every other absolute URL is then derived from that origin, and
+ * `baseUrlConsistency()` reports any remaining disagreement rather than letting
+ * it lie.
+ */
 export function publicBaseUrl(): string {
-  return (process.env.PRESENCE_PUBLIC_URL?.trim() || 'http://localhost:3000').replace(/\/+$/, '');
+  const explicit = process.env.PRESENCE_PUBLIC_URL?.trim();
+  if (explicit) return stripTrailingSlash(explicit);
+
+  // Derive from the registered redirect URI. It is the authoritative statement
+  // of this deployment's origin.
+  const redirect = process.env.WORLDID_REDIRECT_URI?.trim();
+  if (redirect) {
+    try {
+      return new URL(redirect).origin;
+    } catch {
+      // A malformed redirect URI is reported by `baseUrlConsistency`; do not
+      // let it crash link building.
+    }
+  }
+
+  return 'http://localhost:3000';
 }
 
 /** The exact redirect URI. Must match the portal registration byte for byte. */
 export function redirectUri(): string {
-  return process.env.WORLDID_REDIRECT_URI?.trim() || `${publicBaseUrl()}/api/auth/world/callback`;
+  const explicit = process.env.WORLDID_REDIRECT_URI?.trim();
+  if (explicit) return explicit;
+  return `${publicBaseUrl()}/api/auth/world/callback`;
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+/**
+ * Do the two settings agree?
+ *
+ * Returns `consistent: false` with an explanation when they do not, so startup
+ * can say so out loud instead of letting the operator discover it as an
+ * `invalid_request` from the IdP or, worse, as a consent link that opens
+ * nothing.
+ */
+export function baseUrlConsistency(): { consistent: boolean; detail: string | null } {
+  const raw = process.env.WORLDID_REDIRECT_URI?.trim();
+  const explicitBase = process.env.PRESENCE_PUBLIC_URL?.trim();
+
+  if (raw) {
+    let redirectOrigin: string;
+    try {
+      redirectOrigin = new URL(raw).origin;
+    } catch {
+      return { consistent: false, detail: `WORLDID_REDIRECT_URI is not a valid URL: ${raw}` };
+    }
+    if (explicitBase && stripTrailingSlash(explicitBase) !== redirectOrigin) {
+      return {
+        consistent: false,
+        detail:
+          `PRESENCE_PUBLIC_URL is ${stripTrailingSlash(explicitBase)} but the registered ` +
+          `redirect URI is on ${redirectOrigin}`,
+      };
+    }
+  }
+
+  return { consistent: true, detail: null };
 }
 
 /** How long an ID token is considered usable for a single consumption (seconds). */

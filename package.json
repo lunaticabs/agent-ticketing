@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Presence \u2014 agent queueing with fresh human authorization at the moment a slot is handed over.",
   "scripts": {
-    "dev": "next dev -p 3000",
-    "dev:https": "bash scripts/dev-https.sh",
+    "dev": "bash scripts/dev.sh auto",
+    "dev:https": "bash scripts/dev.sh https",
     "build": "next build",
     "start": "next start -p 3000",
     "seed": "tsx db/seed.ts",
@@ -20,7 +20,8 @@
     "e2e": "tsx scripts/e2e.ts",
     "verify": "npm run test && npm run e2e && npm run mcp-check && npm run build && npm run security-check",
     "mcp-check": "tsx scripts/mcp-check.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:http": "bash scripts/dev.sh http"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.1",

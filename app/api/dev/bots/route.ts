@@ -1,7 +1,6 @@
 import { json, route, readJson } from '@/lib/api';
 import { assertDevRoutes } from '@/lib/devmode';
 import { runBotArmy, runSpeedContrast } from '@/lib/botarmy';
-import { publicBaseUrl } from '@/worldid/config';
 
 /**
  * T-6.3 — the speed-contrast demo behind a button.
@@ -14,7 +13,12 @@ import { publicBaseUrl } from '@/worldid/config';
 export const POST = route(async (req) => {
   assertDevRoutes();
   const body = await readJson(req);
-  const baseUrl = publicBaseUrl();
+  // Self-calls use the origin the request actually arrived on, NOT the public
+  // base URL. Those two can legitimately differ — a TLS-terminating proxy, or a
+  // server started on http while the config declares https — and when they do,
+  // dialling the public URL from inside the process fails with a bare
+  // `fetch failed`. The request's own origin is always reachable.
+  const baseUrl = new URL(req.url).origin;
   const accounts = typeof body.accounts === 'number' ? body.accounts : undefined;
   const humans = typeof body.humans === 'number' ? body.humans : undefined;
   const slots = typeof body.slots === 'number' ? body.slots : undefined;
