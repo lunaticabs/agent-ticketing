@@ -84,10 +84,18 @@ Proceed*. Nothing in the OIDC flow needs it to be trusted. Override with
 | `npm run mcp` | the MCP server (stdio) |
 | `npm run bots` | the bot army (`-- --compare` for the FCFS/lottery side-by-side) |
 | `npm run spike` | re-verify every assumption against the live sandbox IdP |
-| `npm test` | 45 tests: invariant tests for each red line, plus client-render smoke tests |
+| `npm test` | 75 tests: red-line invariants, **user journeys driven through the DOM**, URL consistency |
 | `npm run e2e` | 9 live HTTP checks: all six demo beats + the failure matrix |
 | `npm run mcp-check` | 10 live MCP checks |
 | `npm run security-check` | the T-7.2 self-check (run after `npm run build`) |
+
+`npm test` has three layers, and the third exists because the first two let three
+bugs reach a human — all of them the same shape, two copies of one piece of state
+with nothing asserting they agreed: **red-line invariants**, **URL-consistency
+tests**, and **user journeys** that render the real pages, find real buttons,
+click them and read the real DOM. Nothing there calls an internal function or
+asserts on a variable, because what was broken was never the logic — it was the
+*journey*.
 
 Pre-flight before a demo:
 
@@ -232,7 +240,7 @@ agent/          the standalone agent process
 mcp/            the MCP surface
 scripts/        spike, e2e, mcp-check, security-check, bot-army
 db/             schema.sql, seed, reset
-tests/          invariant tests + client-render smoke tests
+tests/          red-line invariants + user journeys (real clicks) + URL consistency
 ```
 
 ---
