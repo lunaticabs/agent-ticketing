@@ -1,21 +1,22 @@
 #!/usr/bin/env tsx
 /**
  * ============================================================================
- *  Security self-check (T-7.2)
+ *  Static self-check (T-7.2, plus one robustness guard)
  * ============================================================================
  *
  *   npm run build && npm run security-check
  *
- * Five checks the TODO asks for by name. Four of them are greps, which sounds
- * weak until you notice what they are greps *for*: the failure modes they catch
- * are all "someone added a second implementation", and a second implementation
- * is exactly what a grep finds and a unit test does not.
+ * Six greps. That sounds weak until you notice what they are greps *for*: the
+ * failure modes they catch are all "someone added a second implementation" or
+ * "someone wrote a shape that only holds for one of two callers", and those are
+ * exactly what a grep finds and a unit test does not.
  *
  *   1. no secret in the client bundle
  *   2. every verification happens on the server
  *   3. `consumed_proof.nullifier` carries a real UNIQUE constraint
  *   4. the environment is pinned in exactly one place
  *   5. exactly ONE implementation of the gate, reached from every surface
+ *   6. no half-guarded optional chains (see the comment on check 6)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -285,6 +286,54 @@ function rel(f: string): string {
     name: '5 · one gate implementation, shared by every surface',
     pass: failures.length === 0,
     detail: `lib/gate.ts is reached by: ${callers.map(rel).join(', ')}`,
+    failures,
+  });
+}
+
+// ── 6. No half-guarded optional chains ──────────────────────────────────────
+
+{
+  // Why this is here, and why it is a grep rather than a type error.
+  //
+  // `a?.b.c` reads as "guard this access" and does not: the `?.` short-circuits
+  // only on `a`. If `b` is absent, the `.c` throws. TypeScript cannot help,
+  // because `b` is non-nullable *in the type* — the whole bug is that the value
+  // is not the type it claims to be.
+  //
+  // That is exactly what broke the console: it polled `/api/health` as a
+  // placeholder while deciding whether anyone was signed in, stored the result
+  // in a variable typed as the queue-status payload, and then read
+  // `status.data.inbound.used`. `curl /` returned 200 the whole time; the page
+  // was unusable for every signed-out visitor.
+  //
+  // The rule is therefore simply: write the whole chain (`a?.b?.c`). A redundant
+  // `?.` costs nothing; a missing one costs a blank page.
+  const pattern = /\?\.[A-Za-z_$][A-Za-z0-9_$]*\.[A-Za-z_$]/;
+  const failures: string[] = [];
+  let scanned = 0;
+
+  for (const file of sourceFiles) {
+    const relative = rel(file);
+    // The checker itself names the pattern it forbids.
+    if (relative === 'scripts/security-check.ts') continue;
+    if (relative === 'tests/ui-smoke.test.ts') continue;
+    scanned += 1;
+
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, index) => {
+      // Skip comments: the pattern appears in prose explaining the rule.
+      const trimmed = line.trim();
+      if (trimmed.startsWith('*') || trimmed.startsWith('//')) return;
+      if (pattern.test(line)) {
+        failures.push(`${relative}:${index + 1}  ${trimmed.slice(0, 90)}`);
+      }
+    });
+  }
+
+  checks.push({
+    name: '6 · every optional chain is guarded all the way down',
+    pass: failures.length === 0,
+    detail: `scanned ${scanned} files for \`?.a.b\` (write \`?.a?.b\` instead)`,
     failures,
   });
 }
