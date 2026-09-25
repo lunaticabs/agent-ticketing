@@ -36,6 +36,8 @@ import { audit } from './audit';
 import { PresenceError } from './errors';
 import { getEvent, type EventRow } from './humans';
 import { activeGrant, mentorAllowance } from './grants';
+// One-way dependency: queue.ts knows nothing about slots.
+import { settleLottery } from './queue';
 
 export type SlotState =
   | 'AVAILABLE'
@@ -206,7 +208,15 @@ export function nextCandidatePreview(eventId: string): CandidateRow | undefined 
 // ── The sweeper ─────────────────────────────────────────────────────────────
 
 export interface SweepTransition {
-  kind: 'approval_expired' | 'deferred' | 'reallocated' | 'no_candidate' | 'transfer_expired' | 'transfer_rolled_back';
+  kind:
+    | 'lottery_settled'
+    | 'approval_expired'
+    | 'deferred'
+    | 'reallocated'
+    | 'no_candidate'
+    | 'transfer_expired'
+    | 'transfer_rolled_back';
+  /** Empty for `lottery_settled`, which happens before any slot is involved. */
   slotId: string;
   continuityId?: string | null;
   message: string;
@@ -224,6 +234,54 @@ export interface SweepTransition {
 export function sweep(eventId?: string): SweepTransition[] {
   const transitions: SweepTransition[] = [];
   const now = nowMs();
+
+  // ── 0. Close any draw window whose time has come ──────────────────────────
+  //
+  // This was missing, and the omission was invisible in a specific way: the seed
+  // advertises `lottery_window_sec: 15`, the board counts the window down, and
+  // the `queue_closed` refusal explains that the window closes before the draw —
+  // while nothing anywhere acted on the deadline. Only the /admin buttons and
+  // the bot-army scripts ever called `settleLottery`. So a real participant
+  // joined, watched the countdown reach zero, and then waited forever.
+  //
+  // Settling here rather than in a timer keeps the project's rule intact: the
+  // state you read is the state as of now, with no background process to drift
+  // or to forget to start.
+  const windows = getDb()
+    .prepare(
+      `SELECT e.id, e.lottery_window_sec,
+              (SELECT MIN(joined_at) FROM queue_entry q WHERE q.event_id = e.id) AS first_join,
+              (SELECT COUNT(*) FROM queue_entry q WHERE q.event_id = e.id) AS entrants
+         FROM event e
+        WHERE e.lottery_drawn_at IS NULL
+          ${eventId ? 'AND e.id = ?' : ''}`,
+    )
+    .all(...(eventId ? [eventId] : [])) as {
+    id: string;
+    lottery_window_sec: number;
+    first_join: number | null;
+    entrants: number;
+  }[];
+
+  for (const window of windows) {
+    // Nobody to draw. Leave the window open so a late arrival can still enter.
+    if (window.first_join === null || window.entrants === 0) continue;
+
+    // The window is measured from the first arrival, not from event creation:
+    // an event seeded hours before the demo should not close before anyone
+    // arrives. `lottery_window_sec: 0` means "draw as soon as somebody is in".
+    const closesAt = window.first_join + Math.max(0, window.lottery_window_sec) * 1000;
+    if (now < closesAt) continue;
+
+    const draw = settleLottery(window.id);
+    transitions.push({
+      kind: 'lottery_settled',
+      slotId: '',
+      continuityId: null,
+      message: `draw settled: ${draw.order.length} entrant${draw.order.length === 1 ? '' : 's'} ranked`,
+      at: now,
+    });
+  }
 
   // ── 1. Approval windows on allocated slots ──
   const expired = getDb()

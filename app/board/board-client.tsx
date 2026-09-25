@@ -193,7 +193,15 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
 
   const h = data.highlight;
   const highlightTone =
-    h.kind === 'deferral' ? 'warn' : h.kind === 'rejection' ? 'alert' : h.kind === 'none' ? 'neutral' : 'live';
+    h.kind === 'deferral'
+      ? 'warn'
+      : h.kind === 'rejection'
+        ? 'alert'
+        : h.kind === 'none'
+          ? 'neutral'
+          : h.kind === 'draw'
+            ? 'brand'
+            : 'live';
   const fresh = Date.now() - h.at < 12_000 && h.kind !== 'none';
 
   return (

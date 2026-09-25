@@ -731,6 +731,61 @@ test('RED LINE 10 — FCFS mode does reward arrival order (the control group)', 
 //  T-2.2 / T-2.3 — allocation bounds and deferral
 // ════════════════════════════════════════════════════════════════════════════
 
+test('T-2.1 — a draw window closes by itself, with no button and no timer', async () => {
+  // The seed advertises a 15-second window and the board counts it down, but
+  // nothing used to act on the deadline: only /admin's fast-forward and the bot
+  // scripts ever settled a draw. A real participant joined, watched the
+  // countdown reach zero, and waited forever.
+  reset();
+  const event = freshEvent({ slots: 3, lotteryMode: 'lottery' });
+  // Shorten the window so the test does not sleep for 15 seconds.
+  const { updateEvent } = await import('../lib/humans');
+  updateEvent(event.id, { lottery_window_sec: 1 });
+
+  const alice = human('self-closing-alice');
+  joinQueue(event.id, alice);
+
+  // First sweep: still inside the window, so nothing is drawn.
+  let transitions = sweep(event.id);
+  assert.equal(transitions.some((t) => t.kind === 'lottery_settled'), false, 'window still open');
+  const before = getDb()
+    .prepare(`SELECT lottery_rank FROM queue_entry WHERE continuity_id = ?`)
+    .get(alice) as { lottery_rank: number | null };
+  assert.equal(before.lottery_rank, null, 'still inside the window, so nobody is ranked yet');
+
+  // Move the arrival into the past so the window has demonstrably elapsed,
+  // rather than sleeping.
+  getDb()
+    .prepare(`UPDATE queue_entry SET joined_at = ? WHERE event_id = ?`)
+    .run(Date.now() - 5000, event.id);
+
+  transitions = sweep(event.id);
+  assert.ok(
+    transitions.some((t) => t.kind === 'lottery_settled'),
+    'the sweep must settle the draw once the window has elapsed',
+  );
+
+  const entry = getDb()
+    .prepare(`SELECT lottery_rank FROM queue_entry WHERE continuity_id = ?`)
+    .get(alice) as { lottery_rank: number | null };
+  assert.equal(entry.lottery_rank, 1, 'the only entrant should be ranked');
+
+  // And allocation happened in the same pass, so the participant has a slot
+  // with a live countdown rather than a rank and nothing else.
+  const allocated = listSlots(event.id).filter((s) => s.state === 'ALLOCATED');
+  assert.equal(allocated.length, 1);
+  assert.ok(allocated[0].approval_deadline! > Date.now(), 'a fresh approval window opened');
+});
+
+test('T-2.1 — an empty window stays open, so a late arrival can still enter', () => {
+  // Settling an empty draw would close the event before anyone could join.
+  reset();
+  const event = freshEvent({ slots: 3 });
+  const transitions = sweep(event.id);
+  assert.equal(transitions.some((t) => t.kind === 'lottery_settled'), false);
+  assert.doesNotThrow(() => joinQueue(event.id, human('late-but-first')));
+});
+
 test('T-2.2 — allocations never exceed total_slots, and every ALLOCATED slot has a deadline', () => {
   reset();
   const event = freshEvent({ slots: 3 });

@@ -21,7 +21,7 @@ import { recentAudit } from './audit';
 import { idpMode, WORLDID_ISSUER } from '../worldid/config';
 
 export interface BoardHighlight {
-  kind: 'deferral' | 'rejection' | 'allocation' | 'confirmation' | 'transfer' | 'none';
+  kind: 'draw' | 'deferral' | 'rejection' | 'allocation' | 'confirmation' | 'transfer' | 'none';
   at: number;
   slotId: string | null;
   continuityId: string | null;
@@ -185,11 +185,13 @@ function deriveHighlight(
   if (newest) {
     return {
       kind:
-        newest.kind === 'transfer_expired'
-          ? 'rejection'
-          : newest.kind === 'deferred' || newest.kind === 'approval_expired'
-            ? 'deferral'
-            : 'allocation',
+        newest.kind === 'lottery_settled'
+          ? 'draw'
+          : newest.kind === 'transfer_expired'
+            ? 'rejection'
+            : newest.kind === 'deferred' || newest.kind === 'approval_expired'
+              ? 'deferral'
+              : 'allocation',
       at: newest.at,
       slotId: newest.slotId,
       continuityId: newest.continuityId ?? null,

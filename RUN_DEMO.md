@@ -38,6 +38,25 @@ Green means the six beats are rehearsed. On `/admin`, press **Reset demo state**
 
 ---
 
+## The participant's loop (what you actually see)
+
+```
+/admin  → Reset demo state            # opens a fresh 15-second window
+/       → Join the queue              # once
+        → wait ~15s                   # nothing to press; the draw closes itself
+        → a slot is allocated to you, with a live countdown
+        → "Ask me to authorize" → approve on your phone
+        → "Present approval to the gate" → SLOT CONFIRMED
+```
+
+If you press **Join the queue** and see `queue_closed`, the draw for this event
+has already been settled — from a previous run, or by the bot army. Press
+**Reset demo state** on `/admin` and the window reopens.
+
+Real World ID sign-in works at every step; nothing about the participant loop
+requires the fallback IdP. Only the automated checks do, because they press
+Approve on your behalf.
+
 ## Opening line
 
 > "Concert Kit proved bots can be kept out of the queue. But a ticket changes

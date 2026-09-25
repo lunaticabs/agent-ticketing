@@ -80,7 +80,9 @@ export function joinQueue(eventId: string, continuityId: string): JoinResult {
     throw new PresenceError('queue_closed', 'the draw for this event has already been settled', {
       invariant: 'RED LINE 10 — the window closes before the draw, so late arrivals cannot matter',
       details: { eventId, drawnAt: event.lottery_drawn_at },
-      hint: 'Ask an organiser to reset the demo, or join the next event.',
+      hint:
+        'The window is closed for this event. An organiser can open a new one from ' +
+        '/admin — "Reset demo state" clears the draw and starts a fresh window.',
     });
   }
 

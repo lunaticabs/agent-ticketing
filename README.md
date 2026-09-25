@@ -244,6 +244,16 @@ anywhere. `sweep()` advances every expired deadline and is called at the top of
 every read and every write. Nothing can drift out of sync with the clock, and
 there is no cron to forget to start.
 
+`sweep()` closes the draw window too — measured from the *first arrival*, so an
+event seeded hours earlier does not expire before anyone shows up. This was
+missing at first, and the omission was invisible in a particular way: the seed
+advertised a 15-second window, the board counted it down, and the `queue_closed`
+refusal explained that the window closes before the draw — while nothing acted on
+the deadline. A participant joined, watched the countdown reach zero, and waited
+forever. Only the `/admin` buttons ever settled a draw. `tests/invariants.test.ts`
+now covers both halves: the window closes on its own, and an empty window stays
+open so a late arrival can still enter.
+
 **Deferral walks forward, never back.** A candidate whose window closed is marked
 served (`queue_entry.allocated_at`) and is never a candidate again, so the draw
 cannot loop on the same person. `EXPIRED` is deliberately *transient*: the slot
