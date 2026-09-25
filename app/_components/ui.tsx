@@ -9,7 +9,7 @@
  * same way. Showing the *invariant* next to the refusal is what turns a demo
  * error message into an argument.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface ReasonBody {
   ok: false;
@@ -113,8 +113,22 @@ export function usePoll<T>(url: string | null, intervalMs = 1000, initial: T | n
 
 /** Seconds remaining, recomputed locally against the server's clock offset. */
 export function useCountdown(target: number | null | undefined, serverNow: number | null) {
-  const offset = serverNow ? serverNow - Date.now() : 0;
   const [, tick] = useState(0);
+
+  /**
+   * The client's clock skew, captured once per server timestamp.
+   *
+   * `useMemo`, not a plain expression, and the difference is the whole point:
+   * recomputing `serverNow - Date.now()` on every render makes
+   * `Date.now() + offset` evaluate to `serverNow` — a constant — so the
+   * countdown renders twenty times a second and displays the same number every
+   * time. It looked alive and was frozen, and it sat under the board's slot
+   * tiles and its "next deadline" figure as well.
+   *
+   * Keyed on `serverNow`, so each poll re-syncs once and the value then ticks
+   * smoothly against the local clock until the next one.
+   */
+  const offset = useMemo(() => (serverNow ? serverNow - Date.now() : 0), [serverNow]);
 
   useEffect(() => {
     if (target == null) return;
