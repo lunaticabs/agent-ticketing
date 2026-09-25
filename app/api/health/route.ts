@@ -45,13 +45,11 @@ export const GET = route(async () => {
       ? {
           id: event.id,
           name: event.name,
-          policy: event.policy,
           lotteryMode: event.lottery_mode,
           lotteryDrawn: event.lottery_drawn_at !== null,
           windows: {
             lotterySec: event.lottery_window_sec,
             approvalSec: event.approval_window_sec,
-            transferSec: event.transfer_window_sec,
           },
         }
       : null,

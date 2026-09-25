@@ -8,8 +8,10 @@
  *
  * Two scopes:
  *   `vip:skip_queue`  — front of the draw regardless of arrival
- *   `mentor:+N`       — may bring N additional people in, raising this human's
- *                       inbound allowance for the event
+ * A `mentor:+N` scope used to raise a human's inbound transfer allowance. With
+ * transfers removed there is no mechanism for a mentor to bring anyone, so the
+ * scope went with them rather than lingering as a permission that grants
+ * nothing.
  *
  * Every check goes through `activeGrant()`, which re-evaluates expiry and
  * revocation at the moment of use. A cached boolean would let a revoked grant
@@ -20,7 +22,7 @@ import { newId } from './ids';
 import { audit } from './audit';
 import { PresenceError } from './errors';
 
-export type GrantScope = 'mentor:+1' | 'mentor:+3' | 'mentor:+5' | 'vip:skip_queue';
+export type GrantScope = 'vip:skip_queue';
 
 export interface GrantRow {
   id: string;
@@ -129,26 +131,9 @@ export function activeGrants(continuityId: string, eventId: string): GrantRow[] 
     .all(continuityId, eventId, nowMs()) as GrantRow[];
 }
 
-/**
- * How many extra inbound transfers a mentor grant buys. Added on top of the
- * event's `transfer_inbound_cap`; it raises the ceiling for that one human
- * without touching anyone else's.
- */
-export function mentorAllowance(continuityId: string, eventId: string): number {
-  return activeGrants(continuityId, eventId)
-    .filter((g) => g.scope.startsWith('mentor:+'))
-    .reduce((sum, g) => sum + Number(g.scope.split('+')[1] ?? 0), 0);
-}
-
 export function describeScope(scope: GrantScope): string {
   switch (scope) {
     case 'vip:skip_queue':
       return 'Front of the draw, regardless of arrival time';
-    case 'mentor:+1':
-      return 'May bring 1 additional person in';
-    case 'mentor:+3':
-      return 'May bring 3 additional people in';
-    case 'mentor:+5':
-      return 'May bring 5 additional people in';
   }
 }

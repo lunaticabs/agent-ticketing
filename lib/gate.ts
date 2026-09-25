@@ -73,16 +73,6 @@ export function purchaseSignal(eventId: string, continuityId: string): string {
   return `${eventId}:${continuityId}`;
 }
 
-/** e.g. `accept_transfer:slot_tokyo_3` */
-export function transferAction(slotId: string): string {
-  return `accept_transfer:${slotId}`;
-}
-
-/** e.g. `slot_tokyo_3:cid_ab12…` — both are checked, so neither can be swapped. */
-export function transferSignal(slotId: string, recipientContinuityId: string): string {
-  return `${slotId}:${recipientContinuityId}`;
-}
-
 /**
  * The action for the *link* flow (T-0.4 / T-1.1).
  *
@@ -143,7 +133,7 @@ export function describeClaimTarget(eventId: string, continuityId: string): Clai
   const held = getDb()
     .prepare(
       `SELECT * FROM slot WHERE event_id = ? AND holder_continuity_id = ?
-        AND state IN ('CONFIRMED','TRANSFER_PENDING','TRANSFERRED')`,
+        AND state = 'CONFIRMED'`,
     )
     .all(eventId, continuityId) as SlotRow[];
   if (held.length > 0) {

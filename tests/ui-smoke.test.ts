@@ -125,8 +125,7 @@ const STATUS = {
   holding: [],
   vip: false,
   grants: [],
-  inbound: { used: 0, cap: 2 },
-  slots: { total: 8, available: 8, allocated: 0, confirmed: 0, transfers: 0 },
+  slots: { total: 8, available: 8, allocated: 0, confirmed: 0 },
   openApprovals: [],
   recentTransitions: [],
 };
@@ -213,7 +212,6 @@ test('console renders for a signed-in human and shows their queue state', async 
   assert.deepEqual(result.consoleErrors, [], `React reported errors: ${result.consoleErrors.join(' | ')}`);
   // The status payload only reached the page if the queue numbers rendered.
   assert.match(result.html, /cid_abc123/, 'the continuity id should be shown once signed in');
-  assert.match(result.html, /0 \/ 2/, 'the inbound counter should render from the status payload');
 });
 
 test('console finishes the handover after a consent round trip, without a third click', async () => {

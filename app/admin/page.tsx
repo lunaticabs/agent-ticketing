@@ -33,10 +33,9 @@ interface Health {
   event: {
     id: string;
     name: string;
-    policy: string;
     lotteryMode: string;
     lotteryDrawn: boolean;
-    windows: { lotterySec: number; approvalSec: number; transferSec: number };
+    windows: { lotterySec: number; approvalSec: number };
   } | null;
 }
 
@@ -63,14 +62,15 @@ export default function AdminPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [output, setOutput] = useState<string[]>([]);
   const [army, setArmy] = useState<{ accounts: ArmyMember[]; humans: { continuityId: string; accounts: number }[]; collapseRatio: string } | null>(null);
-  const [laundering, setLaundering] = useState<{
-    headline: string;
-    completed: number;
-    refused: number;
-    attempts: { attempt: number; handle: string; outcome: string; code?: string; message: string; inboundAfter: number; cap: number; short: string }[];
-  } | null>(null);
   const [attacks, setAttacks] = useState<AttackOutcome[]>([]);
   const [contrast, setContrast] = useState<{ verdict: string } | null>(null);
+  const [armyQueue, setArmyQueue] = useState<{
+    accounts: number;
+    humans: number;
+    joined: number;
+    refused: number;
+    headline: string;
+  } | null>(null);
 
   const devRoutes = health.data?.devRoutes ?? false;
 
@@ -127,7 +127,7 @@ export default function AdminPage() {
             <Button
               tone="warn"
               disabled={busy !== null || !devRoutes}
-              onClick={() => run('reset', () => call('/api/dev/reset', { json: {} }), () => { setLaundering(null); setAttacks([]); setContrast(null); })}
+              onClick={() => run('reset', () => call('/api/dev/reset', { json: {} }), () => { setAttacks([]); setContrast(null); })}
             >
               Reset demo state
             </Button>
@@ -151,7 +151,6 @@ export default function AdminPage() {
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-[var(--color-muted)]">
             <div>idp<br /><span className="text-[var(--color-text)]">{health.data?.idp?.mode}</span></div>
-            <div>policy<br /><span className="text-[var(--color-text)]">{health.data?.event?.policy ?? '—'}</span></div>
             <div>mode<br /><span className="text-[var(--color-text)]">{health.data?.event?.lotteryMode ?? '—'}</span></div>
           </div>
         </Card>
@@ -185,7 +184,13 @@ export default function AdminPage() {
         </Card>
 
         {/* ── Beat 4 ────────────────────────────────────────────────── */}
-        <Card title="beat 4 · the laundering collapse" className="lg:col-span-2">
+        <Card title="beat 4 · 40 accounts, 2 humans" className="lg:col-span-2">
+          <p className="mb-3 text-xs text-[var(--color-muted)]">
+            Slots are locked, so circulation is not the attack surface any more — the queue is.
+            Build forty signups, point them at one event, and watch them collapse onto two
+            continuity ids. The second account for the same human does not get a second place in
+            line, because the constraint is on the human and not on the account.
+          </p>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <div className="flex flex-wrap gap-2">
@@ -194,8 +199,16 @@ export default function AdminPage() {
                   onClick={() =>
                     run(
                       'build army',
-                      () => call<{ accounts: ArmyMember[]; humans: { continuityId: string; accounts: number }[]; collapseRatio: string }>('/api/dev/army', { json: { accounts: 40, humans: 2 } }),
-                      (r) => { setArmy(r); log(r.collapseRatio); },
+                      () =>
+                        call<{
+                          accounts: ArmyMember[];
+                          humans: { continuityId: string; accounts: number }[];
+                          collapseRatio: string;
+                        }>('/api/dev/army', { json: { accounts: 40, humans: 2 } }),
+                      (r) => {
+                        setArmy(r);
+                        log(r.collapseRatio);
+                      },
                     )
                   }
                 >
@@ -206,19 +219,19 @@ export default function AdminPage() {
                   disabled={busy !== null || !devRoutes}
                   onClick={() =>
                     run(
-                      'laundering',
-                      () =>
-                        call<{
-                          headline: string;
-                          completed: number;
-                          refused: number;
-                          attempts: { attempt: number; handle: string; outcome: string; code?: string; message: string; inboundAfter: number; cap: number; short: string }[];
-                        }>('/api/dev/laundering', { json: { accounts: 40, humans: 2 } }),
-                      (r) => { setLaundering(r); log(r.headline); },
+                      'army queues',
+                      () => call<{ accounts: number; humans: number; joined: number; refused: number; headline: string }>(
+                        '/api/dev/army/queue',
+                        { json: { accounts: 40, humans: 2 } },
+                      ),
+                      (r) => {
+                        setArmyQueue(r);
+                        log(r.headline);
+                      },
                     )
                   }
                 >
-                  Run the laundering simulation
+                  Have all 40 join the queue
                 </Button>
               </div>
 
@@ -237,19 +250,19 @@ export default function AdminPage() {
             </div>
 
             <div>
-              {laundering && (
+              {armyQueue && (
                 <>
-                  <div className="text-lg font-bold">{laundering.headline}</div>
-                  <ul className="mono mt-2 max-h-72 space-y-0.5 overflow-y-auto text-xs">
-                    {laundering.attempts.map((a) => (
-                      <li
-                        key={a.attempt}
-                        className={a.outcome === 'completed' ? 'text-[var(--color-live)]' : 'text-[var(--color-alert)]'}
-                      >
-                        #{String(a.attempt).padStart(2, '0')} {a.short} · {a.inboundAfter}/{a.cap} ·{' '}
-                        {a.outcome === 'completed' ? 'completed' : `${a.code} — ${a.message}`}
-                      </li>
-                    ))}
+                  <div className="text-lg font-bold">{armyQueue.headline}</div>
+                  <ul className="mono mt-2 space-y-0.5 text-xs">
+                    <li className="text-[var(--color-live)]">
+                      {armyQueue.accounts} accounts attempted to join
+                    </li>
+                    <li className="text-[var(--color-live)]">
+                      {armyQueue.joined} queue entries were created
+                    </li>
+                    <li className="text-[var(--color-alert)]">
+                      {armyQueue.refused} refused as already in the queue
+                    </li>
                   </ul>
                 </>
               )}
@@ -327,20 +340,8 @@ export default function AdminPage() {
         </Card>
 
         {/* ── Policy knobs ──────────────────────────────────────────── */}
-        <Card title="policy knobs (T-4.5 / T-6.3)">
+        <Card title="speed mode (T-6.3)">
           <div className="flex flex-wrap gap-2">
-            {(['locked', 'gift', 'open'] as const).map((policy) => (
-              <Button
-                key={policy}
-                tone={policy === 'locked' ? 'alert' : policy === 'gift' ? 'warn' : 'live'}
-                disabled={busy !== null || !devRoutes}
-                onClick={() => run(`policy=${policy}`, () => call('/api/dev/policy', { json: { policy } }))}
-              >
-                {policy}
-              </Button>
-            ))}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
             {(['lottery', 'fcfs'] as const).map((mode) => (
               <Button
                 key={mode}
@@ -354,20 +355,21 @@ export default function AdminPage() {
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               disabled={busy !== null || !devRoutes}
-              onClick={() => run('windows', () => call('/api/dev/policy', { json: { approval_window_sec: 20, transfer_window_sec: 20, lottery_window_sec: 10 } }))}
+              onClick={() => run('windows', () => call('/api/dev/policy', { json: { approval_window_sec: 20, lottery_window_sec: 10 } }))}
             >
               short windows for the stage
             </Button>
             <Button
               disabled={busy !== null || !devRoutes}
-              onClick={() => run('windows', () => call('/api/dev/policy', { json: { approval_window_sec: 90, transfer_window_sec: 120, lottery_window_sec: 15 } }))}
+              onClick={() => run('windows', () => call('/api/dev/policy', { json: { approval_window_sec: 90, lottery_window_sec: 15 } }))}
             >
               seeded defaults
             </Button>
           </div>
           <p className="mt-3 text-xs text-[var(--color-muted)]">
-            Slots already in flight keep their own deadlines: the policy is read at use time, never
-            baked into a row. Switch it live and the same attack behaves differently.
+            Slots are locked — there is no transfer policy to switch. These two modes exist to show
+            why the draw matters: run the comparison above and watch FCFS hand the event to the bot
+            army while the draw does not.
           </p>
         </Card>
 
@@ -414,7 +416,9 @@ function GrantIssuer({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        {['vip:skip_queue', 'mentor:+1', 'mentor:+3', 'mentor:+5'].map((s) => (
+        {/* Exactly the scopes the server accepts. A button offering a scope the
+            API rejects is worse than no button: it looks like a working feature. */}
+        {(['vip:skip_queue'] as const).map((s) => (
           <Button key={s} size="sm" tone={scope === s ? 'brand' : 'neutral'} onClick={() => setScope(s)}>
             {s}
           </Button>
@@ -442,7 +446,9 @@ function GrantIssuer({
         Issue grant
       </Button>
       <p className="text-xs text-[var(--color-muted)]">
-        Not a role: a scoped record with an expiry and a revocation. It decays on its own.
+        Not a role: a scoped record with an expiry and a revocation. It decays on its own. The
+        mentor scopes went with the transfer engine — a mentor grant raised a human&apos;s inbound
+        transfer allowance, and there are no transfers to allow.
       </p>
     </div>
   );

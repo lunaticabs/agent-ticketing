@@ -42,17 +42,6 @@ export type ReasonCode =
   | 'not_fresh'
   | 'untrusted_client_result'
   | 'environment_pinned'
-  // transfer
-  | 'transfer_not_found'
-  | 'transfer_already_opened'
-  | 'transfer_not_opened'
-  | 'transfer_expired'
-  | 'transfer_policy_locked'
-  | 'transfer_gift_already_used'
-  | 'transfer_recipient_is_holder'
-  | 'recipient_already_holds_slot'
-  | 'inbound_cap_reached'
-  | 'transfer_not_owner'
   // grants
   | 'grant_not_found'
   | 'grant_expired'
@@ -126,13 +115,10 @@ function defaultStatus(code: ReasonCode): number {
     case 'approval_signal_mismatch':
     case 'untrusted_client_result':
     case 'environment_pinned':
-    case 'transfer_not_owner':
-    case 'recipient_already_holds_slot':
       return 403;
     case 'event_not_found':
     case 'slot_not_found':
     case 'approval_not_found':
-    case 'transfer_not_found':
     case 'grant_not_found':
     case 'not_found':
     case 'dev_routes_disabled':
@@ -140,15 +126,11 @@ function defaultStatus(code: ReasonCode): number {
     case 'proof_replay_detected':
     case 'approval_already_consumed':
     case 'already_owns_entitlement':
-    case 'inbound_cap_reached':
-    case 'transfer_policy_locked':
-    case 'transfer_gift_already_used':
     case 'slot_already_allocated_to_someone_else':
       return 409;
     case 'window_expired':
     case 'deferred_to_next_candidate':
     case 'approval_expired':
-    case 'transfer_expired':
     case 'grant_expired':
       return 410;
     case 'internal_error':

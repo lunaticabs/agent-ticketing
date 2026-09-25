@@ -1,10 +1,9 @@
 import { json, route, requireContinuity } from '@/lib/api';
 import { myEntry, queueStats, listQueue } from '@/lib/queue';
 import { primaryEvent, getEvent } from '@/lib/humans';
-import { allocatedSlotsFor, heldSlotsFor, inboundAllowance, slotSummary, sweep } from '@/lib/slots';
+import { allocatedSlotsFor, heldSlotsFor, slotSummary, sweep } from '@/lib/slots';
 import { activeGrants } from '@/lib/grants';
 import { openApprovalViews } from '@/lib/approval';
-import { inboundCount } from '@/lib/transfer';
 
 /**
  * Where am I, and what can I do next?
@@ -28,8 +27,6 @@ export const GET = route(async (req) => {
   const now = Date.now();
 
   const granted = activeGrants(continuityId, eventId);
-  const inboundUsed = inboundCount(continuityId, eventId);
-
   return json({
     ok: true,
     serverNow: now,
@@ -37,7 +34,6 @@ export const GET = route(async (req) => {
     event: {
       id: event.id,
       name: event.name,
-      policy: event.policy,
       lotteryMode: event.lottery_mode,
       lotteryDrawn: event.lottery_drawn_at !== null,
       lotteryClosesAt:
@@ -58,10 +54,9 @@ export const GET = route(async (req) => {
       remainingMs: s.approval_deadline ? Math.max(0, s.approval_deadline - now) : null,
       deferralCount: s.deferral_count,
     })),
-    holding: held.map((s) => ({ slotId: s.id, state: s.state, acquiredVia: s.acquired_via })),
+    holding: held.map((s) => ({ slotId: s.id, state: s.state })),
     vip: granted.some((g) => g.scope === 'vip:skip_queue'),
     grants: granted.map((g) => ({ id: g.id, scope: g.scope, expiresAt: g.expires_at })),
-    inbound: { used: inboundUsed, cap: inboundAllowance(eventId, continuityId) },
     // What this human still owes an answer to. The console reads this instead of
     // remembering an approval id across the OAuth redirect — which it cannot do,
     // and which used to leave the flow unfinishable in a browser.

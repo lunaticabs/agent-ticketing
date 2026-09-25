@@ -3,9 +3,9 @@
  *  DEV-ONLY simulation surface (T-6.2) — READ THE GUARDRAILS BEFORE USING IT
  * ============================================================================
  *
- * The centrepiece demo is "40 accounts arrive to receive transfers and collapse
- * into 2 continuity ids; the third attempt is refused". That cannot be built
- * from real World ID proofs: you cannot summon 40 verified humans onto a stage.
+ * The centrepiece demo is "40 accounts arrive and collapse into 2 continuity
+ * ids". That cannot be built from real World ID proofs: you cannot summon 40
+ * verified humans onto a stage.
  *
  * So this module manufactures them. That is normal for a demo, and the TODO is
  * explicit that the right move is to disclose it rather than hide it:
@@ -34,12 +34,7 @@ import { audit } from './audit';
 import { PresenceError } from './errors';
 import { ensureSyntheticHuman } from './humans';
 import { primaryEvent, getEvent, updateEvent } from './humans';
-import { ensureSlots, confirmSlot, inboundAllowance, sweep } from './slots';
-import { consumeProof } from './consume';
-import { inboundCount, createTransfer, requestTransferApproval, completeTransfer } from './transfer';
-import { transferAction, transferSignal } from './gate';
-import { getApproval, requestApproval, syncApproval } from './approval';
-import { publicBaseUrl } from '../worldid/config';
+import { ensureSlots, sweep } from './slots';
 import { settleLottery, joinQueue } from './queue';
 
 /** Issuer namespace for simulated humans. Distinct from the local IdP fallback. */
@@ -173,272 +168,89 @@ export function listArmy(): ArmyMember[] {
 
 // ── Demo fast paths ─────────────────────────────────────────────────────────
 
-/**
- * Give a simulated human a confirmed slot without going through the draw.
- *
- * A separate, clearly-labelled write path — NOT a shortcut inside the real
- * allocation code. The real path must stay the only way a *real* human obtains
- * a slot, otherwise the demo would be testing the shortcut.
- */
-export function grantConfirmedSlot(continuityId: string, eventId: string, slotId: string): void {
-  assertDevRoutes();
-  tx((db) => {
-    // Move THIS slot, and only this one. An earlier version cleared every slot
-    // in the event first, which silently un-granted the scalper's previously
-    // acquired inventory and made the laundering run fail with
-    // `transfer_not_owner` on nine attempts out of ten.
-    db.prepare(
-      `UPDATE slot
-          SET state = 'CONFIRMED', holder_continuity_id = ?, acquired_via = 'lottery',
-              approval_deadline = NULL, gift_used = 0, updated_at = ?
-        WHERE id = ?`,
-    ).run(continuityId, nowMs(), slotId);
+// ── Demo beat 4: the collapse ───────────────────────────────────────────────
 
-    // Record the consumption too, so the entitlement guard behaves exactly as
-    // it would have for a real purchase.
-    const nullifier = `nul_dev_${continuityId.slice(-8)}_${slotId}`;
-    try {
-      consumeProof(db, {
-        nullifier,
-        boundAction: `buy_slot:${eventId}`,
-        continuityId,
-        slotId,
-        proofRef: 'dev:direct-grant',
-      });
-    } catch {
-      // A simulated human may legitimately hit the entitlement guard here.
-    }
-
-    audit({
-      type: 'dev.slot_granted',
-      continuityId,
-      eventId,
-      slotId,
-      severity: 'warn',
-      payload: { note: 'SIMULATED grant for the demo — bypasses the draw and the gate' },
-    });
-  });
-}
-
-// ── Demo beat 4: the laundering simulation ──────────────────────────────────
-
-export interface LaunderingAttempt {
-  attempt: number;
-  accountIndex: number;
-  handle: string;
-  continuityId: string;
-  short: string;
-  outcome: 'completed' | 'refused';
-  code?: string;
-  message: string;
-  inboundAfter: number;
-  cap: number;
-}
-
-export interface LaunderingResult {
+export interface ArmyQueueResult {
   eventId: string;
-  slotId: string;
   accounts: number;
   humans: number;
-  completed: number;
-  refused: number;
-  attempts: LaunderingAttempt[];
+  attempted: number;
+  created: number;
+  reused: number;
+  queueLength: number;
   headline: string;
-  /** Set to `open` for the run so the cap is the only rule in the way. */
-  policy: string;
-  capPerHuman: number;
-  /** Why transfers stopped: the cap, not the policy. */
-  stoppedBy: string;
-  /** How many slots the simulated scalper was holding before the run. */
-  inventoryHeld: number;
 }
 
 /**
- * Demo beat 4 in one call.
+ * Demo beat 4, restated for locked slots.
  *
- * A "scalper" holds one confirmed slot and tries to push it through the army,
- * account by account. Each attempt is a *complete, real* transfer: real link,
- * real TTL, real approval, real fresh-authentication requirement, real gate.
- * The only synthetic part is that the recipients never had to prove humanness —
- * and that is disclosed on screen.
+ * Before, the centrepiece was laundering slots through forty accounts. With
+ * circulation gone, the interesting surface is the queue itself: forty signups
+ * pointed at one event collapse onto two continuity ids, because the uniqueness
+ * constraint is on `(event_id, continuity_id)` and a continuity id is a human.
  *
- * The result the judges should read: attempts keep succeeding for a while (the
- * cap is per human, not per attempt) and then stop dead, twice, at exactly
- * `transfer_inbound_cap`, no matter how many fresh accounts are thrown at it.
+ * Note what this is *not*: it is not forty refusals. `joinQueue` is idempotent
+ * by design — a person refreshing the page must get their existing entry, not an
+ * error — so the honest reading is "forty attempts produced two entries". The
+ * demo shows that rather than manufacturing forty red lines.
  */
-export async function runLaunderingDemo(opts: {
-  eventId?: string;
-  accounts?: number;
-  humans?: number;
-  /** Where the consent endpoint lives. Defaults to this deployment. */
-  baseUrl?: string;
-}): Promise<LaunderingResult> {
+export function runArmyQueueDemo(opts: { eventId?: string; accounts?: number; humans?: number } = {}): ArmyQueueResult {
   assertDevRoutes();
   const accounts = Math.max(1, Math.min(opts.accounts ?? 40, 200));
   const humans = Math.max(1, Math.min(opts.humans ?? 2, accounts));
-  const baseUrl = (opts.baseUrl ?? publicBaseUrl()).replace(/\/+$/, '');
 
   const army = buildArmy({ accounts, humans });
-  const configured = opts.eventId ? getEvent(opts.eventId) : primaryEvent();
-  if (!configured) throw new PresenceError('event_not_found', 'no event');
+  const event = opts.eventId ? getEvent(opts.eventId) : primaryEvent();
+  if (!event) throw new PresenceError('event_not_found', 'no event');
 
-  // Set the MOST PERMISSIVE transfer policy before running. This matters for the
-  // argument: under `gift` the slot's one-gift lifetime would refuse the second
-  // attempt, and the audience would be watching the wrong rule. With `open`,
-  // free transfer is allowed and the ONLY thing left standing between the
-  // scalper and the whole inventory is the per-human cap. That is the rule we are
-  // here to demonstrate, so it is the only one left in the way.
-  const event = updateEvent(configured.id, { policy: 'open' });
-
-  // One slot per attempt, all held by the scalper. This detail matters: a
-  // transfer proof is bound to `accept_transfer:{slot_id}`, so pushing the SAME
-  // slot twice at the same human derives the same nullifier and is correctly
-  // refused as a replay. Reusing one slot would therefore have the audience
-  // watching the replay guard instead of the cap. A real scalper has inventory,
-  // so the simulation gives him inventory.
-  ensureSlots(event.id, Math.max(event.total_slots, accounts + 1));
+  // A fresh window, or the draw would already have closed and every join would
+  // be refused for the wrong reason.
+  resetDemo();
   sweep(event.id);
 
-  const scalper = ensureSyntheticHuman('scalper-prime');
-  const inventory = (
+  let created = 0;
+  let reused = 0;
+  for (const account of army.accounts) {
+    const result = joinQueue(event.id, account.continuityId);
+    if (result.created) created += 1;
+    else reused += 1;
+  }
+
+  const queueLength = (
     getDb()
-      .prepare(`SELECT id FROM slot WHERE event_id = ? ORDER BY created_at, id LIMIT ?`)
-      .all(event.id, accounts) as { id: string }[]
-  ).map((r) => r.id);
-
-  for (const slotId of inventory) {
-    grantConfirmedSlot(scalper.continuity_id, event.id, slotId);
-  }
-
-  const attempts: LaunderingAttempt[] = [];
-  let completed = 0;
-  let refused = 0;
-
-  // Walk the army account by account. The account list cycles through the two
-  // humans, so the audience watches *fresh accounts* being refused rather than
-  // the same one repeatedly — which is the whole point of the beat.
-  for (let i = 0; i < accounts; i += 1) {
-    const account = army.accounts[i % army.accounts.length];
-    const slotId = inventory[i % inventory.length];
-    const cap = inboundAllowance(event.id, account.continuityId);
-    const used = inboundCount(account.continuityId, event.id);
-
-    const base: Omit<LaunderingAttempt, 'outcome' | 'message' | 'inboundAfter'> = {
-      attempt: i + 1,
-      accountIndex: account.accountIndex,
-      handle: account.handle,
-      continuityId: account.continuityId,
-      short: `…${account.continuityId.slice(-8)}`,
-      cap,
-    };
-
-    try {
-      const created = createTransfer({
-        slotId,
-        fromContinuityId: scalper.continuity_id,
-        toContinuityId: account.continuityId,
-        label: `demo beat 4 · account ${account.accountIndex}`,
-      });
-
-      const request = await requestTransferApproval(created.token, account.continuityId);
-
-      // Complete the consent step the way a human would: by POSTing to the same
-      // consent endpoint the fallback screen uses. Deliberately an HTTP call and
-      // not a direct `worldid` import — this module must keep sharing no code
-      // branch with the real verification path (see the guardrails at the top).
-      if (request.mode !== 'local') {
-        throw new PresenceError(
-          'bad_request',
-          'the laundering simulation can only auto-approve the local fallback consent screen',
-          {
-            hint:
-              'With real portal credentials the IdP requires a human on a device, which a script ' +
-              'cannot substitute. Run with the local fallback to demo this beat.',
-          },
-        );
-      }
-      const consent = await fetch(`${baseUrl}/api/auth/local`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ requestId: request.requestId, handle: account.handle }),
-      });
-      if (!consent.ok) {
-        throw new Error(`consent step failed: HTTP ${consent.status} ${await consent.text()}`);
-      }
-
-      await syncApproval(request.approvalId);
-      const synced = getApproval(request.approvalId);
-      if (synced?.state !== 'APPROVED') {
-        throw new Error(`consent did not produce an approval (${synced?.state}: ${synced?.fail_reason})`);
-      }
-
-      const result = await completeTransfer({
-        token: created.token,
-        continuityId: account.continuityId,
-        approvalRef: request.approvalId,
-      });
-
-      completed += 1;
-      attempts.push({
-        ...base,
-        outcome: 'completed',
-        message: `transfer completed; inbound ${result.inboundCount}/${result.inboundCap}`,
-        inboundAfter: result.inboundCount,
-      });
-    } catch (err) {
-      refused += 1;
-      const code = err instanceof PresenceError ? err.code : 'internal_error';
-      attempts.push({
-        ...base,
-        outcome: 'refused',
-        code,
-        message: err instanceof Error ? err.message : String(err),
-        inboundAfter: used,
-      });
-    }
-  }
+      .prepare(`SELECT COUNT(*) AS n FROM queue_entry WHERE event_id = ?`)
+      .get(event.id) as { n: number }
+  ).n;
 
   audit({
-    type: 'dev.laundering_demo',
+    type: 'dev.army_queue',
     eventId: event.id,
-    severity: 'alert',
+    severity: 'warn',
     payload: {
       accounts,
       humans,
-      completed,
-      refused,
-      policy: event.policy,
-      note: 'the same human, arriving through many accounts, is stopped by the per-human cap',
+      attempted: army.accounts.length,
+      created,
+      reused,
+      queueLength,
+      note: 'forty accounts, two humans, two places in line — the constraint is on the human',
     },
   });
 
-  const capPerHuman = event.transfer_inbound_cap;
-  const ceiling = humans * capPerHuman;
-  const stoppedBy =
-    completed === ceiling
-      ? `stopped exactly at the ceiling: ${humans} humans x ${capPerHuman} inbound = ${ceiling}. ` +
-        'Every further account was refused with inbound_cap_reached.'
-      : `completed ${completed} of a possible ${ceiling} (${humans} humans x ${capPerHuman}).`;
-
   return {
     eventId: event.id,
-    slotId: inventory[0] ?? '',
     accounts,
     humans,
-    completed,
-    refused,
-    attempts,
-    policy: event.policy,
-    capPerHuman,
-    stoppedBy,
-    inventoryHeld: inventory.length,
+    attempted: army.accounts.length,
+    created,
+    reused,
+    queueLength,
     headline:
-      `${accounts} accounts, ${humans} humans, policy=open: the scalper holds ${inventory.length} slots ` +
-      `and pushed them through ${accounts} accounts — ${completed} got through, ${refused} refused. ` +
-      'The cap is per human, so new accounts stop helping.',
+      `${army.accounts.length} accounts joined: ${created} queue ` +
+      `${created === 1 ? 'entry' : 'entries'} created, ${reused} landed on an entry that already ` +
+      `existed. ${humans} humans, ${created} places in line — a new account buys nothing.`,
   };
 }
-
 
 // ── Reset ───────────────────────────────────────────────────────────────────
 
@@ -448,14 +260,18 @@ export async function runLaunderingDemo(opts: {
  * Wipes every table the demo writes to and re-seeds a clean event. Deleting the
  * SQLite file would also work, but the connection is cached per process, so an
  * in-place truncate keeps running servers honest.
+ *
+ * The table list is the whole set of writable tables. It is worth re-reading
+ * after removing a feature: this one still named the two transfer tables long
+ * after they stopped existing, and every demo route failed with
+ * `no such table: transfer_inbound` until it was caught by running the suite
+ * against a freshly built server.
  */
 export function resetDemo(): { reset: true; eventId: string } {
   assertDevRoutes();
   const eventId = tx((db) => {
     for (const table of [
       'consumed_proof',
-      'transfer_inbound',
-      'transfer',
       'approval',
       'auth_request',
       'queue_entry',

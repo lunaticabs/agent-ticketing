@@ -21,7 +21,7 @@ import { PresenceError } from './errors';
 import { audit } from './audit';
 import { consumeProof } from './consume';
 import { listApprovals, verifyApproval } from './approval';
-import { transferAction, transferSignal, executeClaim, purchaseAction, purchaseSignal } from './gate';
+import { executeClaim, purchaseAction, purchaseSignal } from './gate';
 import { listSlots } from './slots';
 import { primaryEvent, getEvent } from './humans';
 import { WORLDID_ENVIRONMENT, WORLDID_ISSUER } from '../worldid/config';
@@ -169,57 +169,56 @@ export async function attackParameterTamper(eventId?: string): Promise<AttackOut
   const event = eventId ? getEvent(eventId) : primaryEvent();
   if (!event) throw new PresenceError('event_not_found', 'no event');
 
-  const approvals = listApprovals({ eventId: event.id, limit: 50 });
-  const transferApproval = approvals.find((a) => a.kind === 'transfer');
+  const purchase = listApprovals({ eventId: event.id, limit: 50 }).find(
+    (a) => a.kind === 'purchase' && (a.state === 'CONSUMED' || a.state === 'APPROVED'),
+  );
 
-  if (!transferApproval) {
+  if (!purchase) {
     throw new PresenceError(
       'bad_request',
-      'there is no transfer approval to tamper with yet — run a transfer first',
-      { httpStatus: 400, hint: 'Run demo beat 5, then press this button.' },
+      'there is no purchase approval to tamper with yet — claim a slot first',
+      { httpStatus: 400, hint: 'Run demo beat 2, then press this button.' },
     );
   }
 
-  const slots = listSlots(event.id);
-  const otherSlot = slots.find((s) => s.id !== transferApproval.slot_id);
   const before = protectedActionFingerprint();
-
   const probes: { variant: string; code: string; message: string }[] = [];
 
-  // (a) point the proof at a different slot
-  if (otherSlot) {
-    const r = await verifyApproval(transferApproval.id, {
-      action: transferAction(otherSlot.id),
-      signal: transferSignal(otherSlot.id, transferApproval.continuity_id),
+  // (a) point the proof at a different event's action
+  {
+    const r = await verifyApproval(purchase.id, {
+      action: purchaseAction(`${event.id}_somewhere_else`),
+      signal: purchaseSignal(`${event.id}_somewhere_else`, purchase.continuity_id),
     });
     probes.push({
-      variant: `retarget the proof from ${transferApproval.slot_id} to ${otherSlot.id}`,
+      variant: 'retarget the proof at a different event',
       code: r.ok ? 'NOT_BLOCKED' : r.code,
       message: r.ok ? 'the server accepted a retargeted proof — this is a bug' : r.message,
     });
   }
 
-  // (b) point the proof at a different recipient
+  // (b) swap the human inside the signal
   {
-    const r = await verifyApproval(transferApproval.id, {
-      action: transferApproval.bound_action,
-      signal: transferSignal(transferApproval.slot_id!, 'cid_someone_else_entirely'),
+    const r = await verifyApproval(purchase.id, {
+      action: purchase.bound_action,
+      signal: purchaseSignal(event.id, 'cid_someone_else_entirely'),
     });
     probes.push({
-      variant: 'swap the recipient inside the signal',
+      variant: 'swap the human inside the signal',
       code: r.ok ? 'NOT_BLOCKED' : r.code,
-      message: r.ok ? 'the server accepted a swapped recipient — this is a bug' : r.message,
+      message: r.ok ? 'the server accepted a swapped human — this is a bug' : r.message,
     });
   }
 
-  // (c) use a transfer proof to authorize a purchase
+  // (c) use a purchase proof for a generic action, which is the mistake this
+  //     project exists to avoid: binding to "verification" instead of the buy
   {
-    const r = await verifyApproval(transferApproval.id, {
-      action: purchaseAction(event.id),
-      signal: purchaseSignal(event.id, transferApproval.continuity_id),
+    const r = await verifyApproval(purchase.id, {
+      action: 'verify_user',
+      signal: purchaseSignal(event.id, purchase.continuity_id),
     });
     probes.push({
-      variant: 'use a transfer proof to authorize a purchase',
+      variant: 'use a purchase proof to authorize a generic "verify_user" action',
       code: r.ok ? 'NOT_BLOCKED' : r.code,
       message: r.ok ? 'the server accepted a cross-action proof — this is a bug' : r.message,
     });
@@ -230,9 +229,9 @@ export async function attackParameterTamper(eventId?: string): Promise<AttackOut
 
   audit({
     type: 'attack.blocked',
-    continuityId: transferApproval.continuity_id,
+    continuityId: purchase.continuity_id,
     eventId: event.id,
-    slotId: transferApproval.slot_id,
+    slotId: purchase.slot_id,
     severity: 'alert',
     payload: { attack: 'parameter_tamper', probes, protectedActionHappened: !blocked },
   });

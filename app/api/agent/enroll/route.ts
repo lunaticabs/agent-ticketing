@@ -88,7 +88,7 @@ export const GET = route(async (req) => {
 
   const { token, payload } = issueAgentToken({
     continuityId: human.continuity_id,
-    scope: ['agent:queue', 'agent:claim', 'agent:transfer'],
+    scope: ['agent:queue', 'agent:claim'],
     ttlSec: 60 * 60 * 4,
     label: url.searchParams.get('label') ?? 'headless-agent',
   });

@@ -6,18 +6,15 @@
  *   AVAILABLE  → ALLOCATED         draw hands it over, deadline written
  *   ALLOCATED  → CONFIRMED         purchase proof verified, nullifier consumed
  *   ALLOCATED  → EXPIRED           deadline passed → defer to the next candidate
- *   CONFIRMED  → TRANSFER_PENDING  recipient opened a transfer link
- *   TRANSFER_PENDING → TRANSFERRED       recipient's own fresh auth verified
- *   TRANSFER_PENDING → TRANSFER_EXPIRED  TTL passed → back to CONFIRMED
+ *   CONFIRMED                      terminal — slots are locked to their holder
  *
  * ---------------------------------------------------------------------------
  *  Deferral is a FEATURE, not error handling
  * ---------------------------------------------------------------------------
- * "名额顺延" is the product. A window that closes and hands the slot to the
- * next human is the mechanism that makes a scalper's time valuable: every
- * transfer needs a real person, awake, inside a window that expires. If the
- * window merely errored out, the queue would stall and the whole design would
- * be a slower ticket shop.
+ * "名额顺延" is the product. A window that closes and hands the slot to the next
+ * human is what stops a queue from stalling behind somebody who walked away: the
+ * draw keeps moving, and a slot is never held by an absent person. If the window
+ * merely errored out, the event would deadlock on its first no-show.
  *
  * Two invariants fall out of the implementation and are tested explicitly:
  *
@@ -35,7 +32,7 @@ import { getDb, nowMs, tx } from './db';
 import { audit } from './audit';
 import { PresenceError } from './errors';
 import { getEvent, type EventRow } from './humans';
-import { activeGrant, mentorAllowance } from './grants';
+import { activeGrant } from './grants';
 // One-way dependency: queue.ts knows nothing about slots.
 import { settleLottery } from './queue';
 
@@ -43,9 +40,6 @@ export type SlotState =
   | 'AVAILABLE'
   | 'ALLOCATED'
   | 'CONFIRMED'
-  | 'TRANSFER_PENDING'
-  | 'TRANSFERRED'
-  | 'TRANSFER_EXPIRED'
   | 'EXPIRED';
 
 export interface SlotRow {
@@ -53,10 +47,8 @@ export interface SlotRow {
   event_id: string;
   state: SlotState;
   holder_continuity_id: string | null;
-  acquired_via: 'lottery' | 'transfer' | null;
   approval_deadline: number | null;
   deferral_count: number;
-  gift_used: number;
   created_at: number;
   updated_at: number;
 }
@@ -117,7 +109,7 @@ export function allocateAvailable(eventId: string): AllocationEvent[] {
       db
         .prepare(
           `SELECT COUNT(*) AS n FROM slot
-            WHERE event_id = ? AND state IN ('ALLOCATED','CONFIRMED','TRANSFER_PENDING','TRANSFERRED')`,
+            WHERE event_id = ? AND state IN ('ALLOCATED','CONFIRMED')`,
         )
         .get(eventId) as { n: number }
     ).n;
@@ -142,7 +134,7 @@ export function allocateAvailable(eventId: string): AllocationEvent[] {
       const deadline = now + event.approval_window_sec * 1000;
       db.prepare(
         `UPDATE slot
-            SET state = 'ALLOCATED', holder_continuity_id = ?, acquired_via = 'lottery',
+            SET state = 'ALLOCATED', holder_continuity_id = ?,
                 approval_deadline = ?, updated_at = ?
           WHERE id = ? AND state = 'AVAILABLE'`,
       ).run(candidate.continuity_id, deadline, now, slot.id);
@@ -214,8 +206,7 @@ export interface SweepTransition {
     | 'deferred'
     | 'reallocated'
     | 'no_candidate'
-    | 'transfer_expired'
-    | 'transfer_rolled_back';
+    ;
   /** Empty for `lottery_settled`, which happens before any slot is involved. */
   slotId: string;
   continuityId?: string | null;
@@ -363,60 +354,6 @@ export function sweep(eventId?: string): SweepTransition[] {
     }
   }
 
-  // ── 2. Transfer TTLs ──
-  const staleTransfers = getDb()
-    .prepare(
-      `SELECT * FROM transfer
-        WHERE state = 'OPENED' AND expires_at IS NOT NULL AND expires_at <= ?
-          ${eventId ? 'AND event_id = ?' : ''}`,
-    )
-    .all(...(eventId ? [now, eventId] : [now])) as {
-    id: string;
-    slot_id: string;
-    event_id: string;
-    from_continuity_id: string;
-    to_continuity_id: string;
-  }[];
-
-  for (const transfer of staleTransfers) {
-    const done = tx((db) => {
-      const changed = db
-        .prepare(`UPDATE transfer SET state = 'EXPIRED' WHERE id = ? AND state = 'OPENED'`)
-        .run(transfer.id).changes;
-      if (!changed) return false;
-
-      // Roll the slot back to its original holder. Never leave it stranded.
-      db.prepare(
-        `UPDATE slot SET state = 'CONFIRMED', updated_at = ?
-          WHERE id = ? AND state = 'TRANSFER_PENDING'`,
-      ).run(now, transfer.slot_id);
-
-      audit({
-        type: 'transfer.expired',
-        continuityId: transfer.from_continuity_id,
-        eventId: transfer.event_id,
-        slotId: transfer.slot_id,
-        severity: 'warn',
-        payload: {
-          transferId: transfer.id,
-          intendedRecipient: transfer.to_continuity_id,
-          note: 'recipient did not complete fresh authentication inside the window',
-        },
-      });
-      return true;
-    });
-
-    if (!done) continue;
-
-    transitions.push({
-      kind: 'transfer_expired',
-      slotId: transfer.slot_id,
-      continuityId: transfer.from_continuity_id,
-      message: 'transfer window closed; slot returned to its holder',
-      at: now,
-    });
-  }
-
   // ── 3. Fill any free capacity ─────────────────────────────────────────────
   //
   // Allocation belongs here rather than at the call sites: "advance every
@@ -466,7 +403,7 @@ export function confirmSlot(
   const changed = db
     .prepare(
       `UPDATE slot
-          SET state = 'CONFIRMED', holder_continuity_id = ?, acquired_via = COALESCE(acquired_via, 'lottery'),
+          SET state = 'CONFIRMED', holder_continuity_id = ?,
               approval_deadline = NULL, updated_at = ?
         WHERE id = ? AND state = 'ALLOCATED' AND holder_continuity_id = ?`,
     )
@@ -494,7 +431,7 @@ export function heldSlotsFor(eventId: string, continuityId: string): SlotRow[] {
     .prepare(
       `SELECT * FROM slot
         WHERE event_id = ? AND holder_continuity_id = ?
-          AND state IN ('ALLOCATED','CONFIRMED','TRANSFER_PENDING')`,
+          AND state IN ('ALLOCATED','CONFIRMED')`,
     )
     .all(eventId, continuityId) as SlotRow[];
 }
@@ -511,21 +448,10 @@ export function hasBeenServed(eventId: string, continuityId: string): boolean {
   const slot = getDb()
     .prepare(
       `SELECT COUNT(*) AS n FROM slot
-        WHERE event_id = ? AND holder_continuity_id = ? AND state IN ('CONFIRMED','TRANSFERRED')`,
+        WHERE event_id = ? AND holder_continuity_id = ? AND state = 'CONFIRMED'`,
     )
     .get(eventId, continuityId) as { n: number };
   return slot.n > 0;
-}
-
-/**
- * Effective inbound allowance for a human on an event: the event's cap plus any
- * mentor grant they hold. Read through here so the cap and the grant can never
- * disagree.
- */
-export function inboundAllowance(eventId: string, continuityId: string): number {
-  const event = getEvent(eventId);
-  const base = event?.transfer_inbound_cap ?? 0;
-  return base + mentorAllowance(continuityId, eventId);
 }
 
 export function hasVipSkip(eventId: string, continuityId: string): boolean {
@@ -540,8 +466,6 @@ export function slotSummary(eventId: string) {
     available: by('AVAILABLE'),
     allocated: by('ALLOCATED'),
     confirmed: by('CONFIRMED'),
-    transferPending: by('TRANSFER_PENDING'),
-    transferred: by('TRANSFERRED'),
     deferrals: slots.reduce((sum, s) => sum + s.deferral_count, 0),
   };
 }

@@ -12,11 +12,10 @@
 --    `UNIQUE (bound_action, continuity_id)` on `consumed_proof`. See the
 --    long comment above that constraint.
 --
---  * RED LINE 9 (inbound cap counted per human, not per account) is the
---    `transfer_inbound` table, keyed on continuity_id.
---
---  * RED LINE 7 (TTL starts when the RECIPIENT OPENS) is why
---    `transfer.expires_at` is NULL until `opened_at` is set.
+--  * Slots are LOCKED: they belong to the human who won them and cannot be
+--    passed on. The transfer engine, its TTL and its per-human inbound cap were
+--    removed, so there is exactly one circulation policy and no column to
+--    configure it with.
 --
 --  All timestamps are Unix milliseconds (INTEGER). JWT `auth_time` arrives in
 --  seconds and is normalised to milliseconds on ingest.
@@ -44,15 +43,8 @@ CREATE TABLE IF NOT EXISTS event (
   id                    TEXT PRIMARY KEY,
   name                  TEXT NOT NULL,
   total_slots           INTEGER NOT NULL CHECK (total_slots > 0),
-  -- Organiser-facing transfer policy knob (T-4.5).
-  policy                TEXT NOT NULL DEFAULT 'gift'
-                          CHECK (policy IN ('locked', 'gift', 'open')),
   approval_window_sec   INTEGER NOT NULL DEFAULT 120 CHECK (approval_window_sec > 0),
   lottery_window_sec    INTEGER NOT NULL DEFAULT 600 CHECK (lottery_window_sec >= 0),
-  transfer_inbound_cap  INTEGER NOT NULL DEFAULT 2 CHECK (transfer_inbound_cap >= 0),
-  -- How long the RECIPIENT has to complete fresh authentication, counted from
-  -- the moment they open the link (RED LINE 7), not from the moment it is sent.
-  transfer_window_sec   INTEGER NOT NULL DEFAULT 120 CHECK (transfer_window_sec > 0),
   -- T-6.3 speed-contrast switch: `lottery` gives everyone in the window equal
   -- odds; `fcfs` is first-come-first-served and is only there to be beaten by
   -- the bot army on stage.
@@ -71,24 +63,17 @@ CREATE TABLE IF NOT EXISTS event (
 --   AVAILABLE  → ALLOCATED        (drawn, approval_deadline written)
 --   ALLOCATED  → CONFIRMED        (purchase approval verified + proof consumed)
 --   ALLOCATED  → EXPIRED          (deadline passed) → defer to next candidate
---   CONFIRMED  → TRANSFER_PENDING (transfer opened by recipient, TTL started)
---   TRANSFER_PENDING → TRANSFERRED       (recipient's own fresh auth verified)
---   TRANSFER_PENDING → TRANSFER_EXPIRED  (TTL passed) → back to CONFIRMED
+--  A confirmed slot is terminal: slots are locked to their holder.
 CREATE TABLE IF NOT EXISTS slot (
   id                    TEXT PRIMARY KEY,
   event_id              TEXT NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   state                 TEXT NOT NULL DEFAULT 'AVAILABLE'
-                          CHECK (state IN ('AVAILABLE','ALLOCATED','CONFIRMED',
-                                           'TRANSFER_PENDING','TRANSFERRED',
-                                           'TRANSFER_EXPIRED','EXPIRED')),
+                          CHECK (state IN ('AVAILABLE','ALLOCATED','CONFIRMED','EXPIRED')),
   holder_continuity_id  TEXT REFERENCES human(continuity_id),
-  acquired_via          TEXT CHECK (acquired_via IN ('lottery','transfer')),
   -- NULL for every state except ALLOCATED. "Every ALLOCATED slot has a
   -- deadline" is a testable invariant (T-2.2) so we assert it in SQL too.
   approval_deadline     INTEGER,
   deferral_count        INTEGER NOT NULL DEFAULT 0 CHECK (deferral_count >= 0),
-  -- `gift` policy: a slot may be gifted at most once in its lifetime.
-  gift_used             INTEGER NOT NULL DEFAULT 0 CHECK (gift_used IN (0,1)),
   created_at            INTEGER NOT NULL,
   updated_at            INTEGER NOT NULL,
   CHECK (state <> 'ALLOCATED' OR approval_deadline IS NOT NULL)
@@ -127,7 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_queue_event_rank ON queue_entry (event_id, lotter
 --                PENDING → EXPIRED
 CREATE TABLE IF NOT EXISTS approval (
   id                    TEXT PRIMARY KEY,
-  kind                  TEXT NOT NULL CHECK (kind IN ('purchase','transfer')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('purchase')),
   -- e.g. 'buy_slot:evt_tokyo'  — RED LINE 1: bound to the OPERATION, never to
   -- a generic 'verify_user'.
   bound_action          TEXT NOT NULL,
@@ -190,51 +175,13 @@ CREATE TABLE IF NOT EXISTS consumed_proof (
 
 CREATE INDEX IF NOT EXISTS idx_consumed_action ON consumed_proof (bound_action);
 
--- ── Transfer ────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS transfer (
-  id                    TEXT PRIMARY KEY,
-  slot_id               TEXT NOT NULL REFERENCES slot(id) ON DELETE CASCADE,
-  event_id              TEXT NOT NULL REFERENCES event(id) ON DELETE CASCADE,
-  from_continuity_id    TEXT NOT NULL REFERENCES human(continuity_id),
-  to_continuity_id      TEXT NOT NULL REFERENCES human(continuity_id),
-  token                 TEXT NOT NULL UNIQUE,
-  label                 TEXT,
-  state                 TEXT NOT NULL DEFAULT 'CREATED'
-                          CHECK (state IN ('CREATED','OPENED','COMPLETED','EXPIRED','CANCELLED')),
-  created_at            INTEGER NOT NULL,
-  -- ── RED LINE 7 ──
-  -- The TTL starts when the RECIPIENT OPENS the link, not when the sender sent
-  -- it. `expires_at` stays NULL until `opened_at` is set. Starting the clock on
-  -- send would expire the offer before the recipient ever saw the message.
-  opened_at             INTEGER,
-  expires_at            INTEGER,
-  completed_at          INTEGER,
-  attempt_count         INTEGER NOT NULL DEFAULT 0,
-  last_reject_reason    TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_transfer_slot  ON transfer (slot_id);
-CREATE INDEX IF NOT EXISTS idx_transfer_state ON transfer (state, expires_at);
-
--- ── TransferInbound ─────────────────────────────────────────────────────────
--- RED LINE 9 — counted per continuity_id, per event. Swapping to a fresh
--- account, device, or agent does not reset this counter; that is the whole
--- point. The scalper's main laundering trick is "new account, same human".
-CREATE TABLE IF NOT EXISTS transfer_inbound (
-  continuity_id  TEXT NOT NULL REFERENCES human(continuity_id),
-  event_id       TEXT NOT NULL REFERENCES event(id) ON DELETE CASCADE,
-  count          INTEGER NOT NULL DEFAULT 0 CHECK (count >= 0),
-  updated_at     INTEGER NOT NULL,
-  PRIMARY KEY (continuity_id, event_id)
-);
-
 -- ── Grant (P2) ──────────────────────────────────────────────────────────────
 -- Not a `user.role` column: a scoped, expiring, revocable authorization record.
 CREATE TABLE IF NOT EXISTS grant_ (
   id                     TEXT PRIMARY KEY,
   event_id               TEXT NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   grantee_continuity_id  TEXT NOT NULL REFERENCES human(continuity_id),
-  scope                  TEXT NOT NULL CHECK (scope IN ('mentor:+1','mentor:+3','mentor:+5','vip:skip_queue')),
+  scope                  TEXT NOT NULL CHECK (scope IN ('vip:skip_queue')),
   issued_at              INTEGER NOT NULL,
   expires_at             INTEGER,
   revoked_at             INTEGER,
@@ -266,7 +213,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_type    ON audit_event (type, at DESC);
 CREATE TABLE IF NOT EXISTS auth_request (
   id                        TEXT PRIMARY KEY,
   mode                      TEXT NOT NULL CHECK (mode IN ('oidc','device','local')),
-  intent                    TEXT NOT NULL CHECK (intent IN ('link','purchase','transfer')),
+  intent                    TEXT NOT NULL CHECK (intent IN ('link','purchase')),
   action                    TEXT NOT NULL,
   signal                    TEXT NOT NULL,
   continuity_id             TEXT,

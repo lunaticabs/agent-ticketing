@@ -166,8 +166,11 @@ function rel(f: string): string {
   if (!/CHECK\s*\(\s*state\s*<>\s*'ALLOCATED'\s+OR\s+approval_deadline\s+IS\s+NOT\s+NULL\s*\)/i.test(schema)) {
     failures.push('slot is missing the CHECK that every ALLOCATED slot has a deadline');
   }
-  if (!/expires_at\s+INTEGER,\s*\n\s*completed_at/i.test(schema)) {
-    failures.push('transfer.expires_at should start NULL (the TTL begins at first open)');
+  // The transfer engine is gone, so the schema must not still be carrying its
+  // tables or its policy columns. A dropped feature that leaves its storage
+  // behind is a feature that comes back by accident.
+  for (const gone of ['CREATE TABLE IF NOT EXISTS transfer', 'transfer_inbound', 'gift_used', "policy  "]) {
+    if (schema.includes(gone)) failures.push(`db/schema.sql still contains "${gone.trim()}"`);
   }
 
   // And the code must actually rely on the constraint rather than pre-checking.
@@ -273,13 +276,6 @@ function rel(f: string): string {
   }
   if (/consumeProof\s*\(|markExecuted\s*\(|confirmSlot\s*\(/.test(mcp)) {
     failures.push('mcp/server.ts touches consumption internals — it must be a thin wrapper');
-  }
-
-  // The transfer path has its own gate; make sure it shares the verification
-  // helper rather than inventing its own.
-  const transfer = fs.readFileSync(path.join(root, 'lib', 'transfer.ts'), 'utf8');
-  if (!/verifyApproval\(/.test(transfer) || !/consumeProof\(/.test(transfer)) {
-    failures.push('lib/transfer.ts does not use the shared verifyApproval + consumeProof path');
   }
 
   checks.push({

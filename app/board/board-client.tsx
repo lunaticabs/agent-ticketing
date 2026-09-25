@@ -37,11 +37,9 @@ interface SlotItem {
   state: string;
   holder: string | null;
   holderShort: string | null;
-  acquiredVia: string | null;
   approvalDeadline: number | null;
   remainingMs: number | null;
   deferralCount: number;
-  giftUsed: boolean;
 }
 
 interface ApprovalItem {
@@ -62,13 +60,10 @@ interface BoardState {
   event: {
     id: string;
     name: string;
-    policy: string;
     lotteryMode: string;
     totalSlots: number;
     approvalWindowSec: number;
     lotteryWindowSec: number;
-    transferWindowSec: number;
-    transferInboundCap: number;
     lotteryDrawnAt: number | null;
     lotterySeed: string | null;
     lotteryOpen: boolean;
@@ -94,30 +89,10 @@ interface BoardState {
     available: number;
     allocated: number;
     confirmed: number;
-    transferPending: number;
-    transferred: number;
     deferrals: number;
     items: SlotItem[];
   };
   approvals: ApprovalItem[];
-  transfers: {
-    total: number;
-    open: number;
-    completed: number;
-    expired: number;
-    rejectedAttempts: number;
-    items: {
-      id: string;
-      slotId: string;
-      fromShort: string;
-      toShort: string | null;
-      state: string;
-      remainingMs: number | null;
-      attemptCount: number;
-      lastRejectReason: string | null;
-    }[];
-  };
-  inbound: { continuityId: string; short: string; count: number; cap: number }[];
   humans: { total: number; distinctInQueue: number };
   drawVerification: {
     settled: boolean;
@@ -155,10 +130,7 @@ const SLOT_TONE: Record<string, { bg: string; label: string }> = {
   AVAILABLE: { bg: 'bg-[var(--color-panel-2)] border-[var(--color-line)] text-[var(--color-muted)]', label: 'available' },
   ALLOCATED: { bg: 'bg-[color-mix(in_srgb,var(--color-live)_18%,transparent)] border-[var(--color-live)] text-[var(--color-live)]', label: 'awaiting human' },
   CONFIRMED: { bg: 'bg-[color-mix(in_srgb,var(--color-brand)_22%,transparent)] border-[var(--color-brand)] text-[var(--color-brand)]', label: 'confirmed' },
-  TRANSFER_PENDING: { bg: 'bg-[color-mix(in_srgb,var(--color-violet)_22%,transparent)] border-[var(--color-violet)] text-[var(--color-violet)]', label: 'transfer pending' },
-  TRANSFERRED: { bg: 'bg-[color-mix(in_srgb,var(--color-violet)_30%,transparent)] border-[var(--color-violet)] text-[var(--color-violet)]', label: 'transferred' },
   EXPIRED: { bg: 'bg-[color-mix(in_srgb,var(--color-warn)_18%,transparent)] border-[var(--color-warn)] text-[var(--color-warn)]', label: 'expired' },
-  TRANSFER_EXPIRED: { bg: 'bg-[color-mix(in_srgb,var(--color-warn)_18%,transparent)] border-[var(--color-warn)] text-[var(--color-warn)]', label: 'transfer expired' },
 };
 
 export default function BoardClient({ initial }: { initial: BoardState | null }) {
@@ -215,9 +187,7 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
           <span className="text-lg text-[var(--color-muted)]">{data.event.name}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={data.event.policy === 'locked' ? 'alert' : data.event.policy === 'gift' ? 'warn' : 'live'}>
-            policy · {data.event.policy}
-          </Badge>
+          <Badge tone="alert">locked · slots are not transferable</Badge>
           <Badge tone={data.event.lotteryMode === 'lottery' ? 'live' : 'alert'}>
             {data.event.lotteryMode === 'lottery' ? 'DRAW — arrival time irrelevant' : 'FCFS — speed wins'}
           </Badge>
@@ -225,7 +195,6 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
             idp · {data.idp.mode}
           </Badge>
           <Badge tone="neutral">window {data.event.approvalWindowSec}s</Badge>
-          <Badge tone="neutral">inbound cap {data.event.transferInboundCap}</Badge>
           <Link href="/admin" className="text-xs text-[var(--color-muted)] underline hover:text-white">
             controls
           </Link>
@@ -264,7 +233,7 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
         <Big label="in queue" value={data.queue.total} detail={`${data.humans.distinctInQueue} distinct humans`} />
         <Big
           label="slots"
-          value={`${data.slots.confirmed + data.slots.transferred}/${data.slots.total}`}
+          value={`${data.slots.confirmed}/${data.slots.total}`}
           detail={`${data.slots.allocated} awaiting · ${data.slots.available} free`}
         />
         <Big
@@ -349,13 +318,12 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--color-line)] pt-3 text-sm">
             <Row label="awaiting human" value={data.slots.allocated} tone="live" />
-            <Row label="confirmed" value={data.slots.confirmed + data.slots.transferred} tone="brand" />
-            <Row label="transfer pending" value={data.slots.transferPending} tone="violet" />
+            <Row label="confirmed" value={data.slots.confirmed} tone="brand" />
             <Row label="free" value={data.slots.available} />
           </div>
         </Card>
 
-        {/* ── Approvals + inbound ────────────────────────────────────── */}
+        {/* ── Approvals ──────────────────────────────────────────────── */}
         <div className="space-y-4 lg:col-span-4">
           <Card title="authorization loop">
             <ul className="space-y-3">
@@ -385,45 +353,6 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
             </ul>
           </Card>
 
-          <Card title="inbound per human">
-            <ul className="space-y-1">
-              {data.inbound.slice(0, 6).map((r) => (
-                <li key={r.continuityId} className="flex items-center gap-2 text-sm">
-                  <span className="mono flex-1 truncate">{r.short}</span>
-                  <div className="h-2 w-24 overflow-hidden rounded-full bg-[var(--color-panel-2)]">
-                    <div
-                      className={`h-full ${
-                        r.count >= r.cap ? 'bg-[var(--color-alert)]' : 'bg-[var(--color-violet)]'
-                      }`}
-                      style={{ width: `${r.cap ? Math.min(100, (r.count / r.cap) * 100) : 100}%` }}
-                    />
-                  </div>
-                  <span className="tnum w-12 text-right">
-                    {r.count}/{r.cap}
-                  </span>
-                </li>
-              ))}
-              {data.inbound.length === 0 && (
-                <li className="text-sm text-[var(--color-muted)]">
-                  no transfers received yet — cap is per human, not per account
-                </li>
-              )}
-            </ul>
-          </Card>
-
-          <Card title="transfers">
-            <div className="grid grid-cols-4 gap-2 text-center text-sm">
-              <Stat label="open" value={data.transfers.open} />
-              <Stat label="done" value={data.transfers.completed} />
-              <Stat label="expired" value={data.transfers.expired} />
-              <Stat label="refused" value={data.transfers.rejectedAttempts} />
-            </div>
-            {data.transfers.items.some((t) => t.lastRejectReason) && (
-              <p className="mt-2 truncate text-xs text-[var(--color-alert)]">
-                last refusal: {data.transfers.items.find((t) => t.lastRejectReason)?.lastRejectReason}
-              </p>
-            )}
-          </Card>
         </div>
       </div>
 
@@ -503,7 +432,6 @@ function SlotTile({ slot, serverNow }: { slot: SlotItem; serverNow: number }) {
           {formatSeconds(remaining)}
         </div>
       )}
-      {slot.acquiredVia && <div className="text-[10px] opacity-70">via {slot.acquiredVia}</div>}
       {slot.deferralCount > 0 && (
         <div className="text-[10px] font-bold">deferred ×{slot.deferralCount}</div>
       )}

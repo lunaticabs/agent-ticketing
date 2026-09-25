@@ -29,7 +29,7 @@
 import crypto from 'node:crypto';
 import { serverSigningKey } from '../worldid/config';
 
-export type AgentScope = 'agent:queue' | 'agent:claim' | 'agent:transfer';
+export type AgentScope = 'agent:queue' | 'agent:claim';
 
 export interface AgentTokenPayload {
   cid: string;
@@ -54,7 +54,7 @@ export function issueAgentToken(input: {
 }): { token: string; payload: AgentTokenPayload } {
   const payload: AgentTokenPayload = {
     cid: input.continuityId,
-    scope: input.scope ?? ['agent:queue', 'agent:claim', 'agent:transfer'],
+    scope: input.scope ?? ['agent:queue', 'agent:claim'],
     iat: Date.now(),
     exp: Date.now() + (input.ttlSec ?? DEFAULT_TTL_SEC) * 1000,
     kid: crypto.randomUUID(),

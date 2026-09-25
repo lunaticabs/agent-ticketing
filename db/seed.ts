@@ -17,15 +17,10 @@ export const DEMO_EVENT_ID = 'evt_tokyo_night';
 export const DEMO_CONFIG = {
   name: 'Tokyo Night — Human Continuity Tour',
   totalSlots: 8,
-  policy: 'gift' as const,
   /** T-6.1: 90s, not the 120s default, so a deferral fits inside a demo beat. */
   approvalWindowSec: 90,
   /** T-6.1: 15s, so the draw settles while the audience is still watching. */
   lotteryWindowSec: 15,
-  /** Concept §7 rule 1 says 120s. The fast-forward button collapses it on stage. */
-  transferWindowSec: 120,
-  /** "每个 continuity 标识每活动最多接受 2 次转入" — the actual anti-scalping rule. */
-  transferInboundCap: 2,
   lotteryMode: 'lottery' as const,
 };
 
@@ -49,12 +44,10 @@ function main(): void {
   console.log(`· slots: ${total} total (${added} added)`);
   console.log('');
   console.log('  demo configuration');
-  console.log(`    policy                ${DEMO_CONFIG.policy}`);
+  console.log('    slots                 locked to their holder — no transfers');
   console.log(`    lottery mode          ${DEMO_CONFIG.lotteryMode}`);
   console.log(`    lottery window        ${DEMO_CONFIG.lotteryWindowSec}s`);
   console.log(`    approval window       ${DEMO_CONFIG.approvalWindowSec}s`);
-  console.log(`    transfer window       ${DEMO_CONFIG.transferWindowSec}s (from first open)`);
-  console.log(`    inbound cap per human ${DEMO_CONFIG.transferInboundCap}`);
   console.log('');
   console.log('  next: ENABLE_DEV_ROUTES=1 npm run dev    (dev routes power the demo props)');
   console.log('');

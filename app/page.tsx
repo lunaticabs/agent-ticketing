@@ -68,8 +68,7 @@ interface Status {
   holding: { slotId: string; state: string; acquiredVia: string | null }[];
   vip: boolean;
   grants: { id: string; scope: string; expiresAt: number | null }[];
-  inbound: { used: number; cap: number };
-  slots: { total: number; available: number; allocated: number; confirmed: number; transfers: number };
+  slots: { total: number; available: number; allocated: number; confirmed: number };
   openApprovals: OpenApproval[];
   recentTransitions: { kind: string; slotId: string; message: string; at: number }[];
 }
@@ -103,7 +102,6 @@ export default function ConsolePage() {
   const [linkRequestId, setLinkRequestId] = useState<string | null>(null);
   const [deviceCode, setDeviceCode] = useState<{ userCode: string; verificationUriComplete: string } | null>(null);
   const [meta, setMeta] = useState<{ action: string; signal: string } | null>(null);
-  const [transferLink, setTransferLink] = useState<string | null>(null);
   /**
    * A local echo of the approval, used only to bridge the instant between
    * pressing "authorize" and the next status poll.
@@ -344,13 +342,6 @@ export default function ConsolePage() {
       await call('/api/slot/claim', { json: {} });
     });
 
-  const createTransfer = (slotId: string) =>
-    run('transfer', async () => {
-      const res = await call<{ ok: true; link: string }>('/api/transfer', { json: { slotId } });
-      setTransferLink(res.link);
-      note('transfer offer created — the window has NOT started yet');
-    });
-
   const deny = (approvalId: string) =>
     run('deny', async () => {
       await call(`/api/approval/${approvalId}`, { json: { reason: 'denied by the human' } });
@@ -440,10 +431,6 @@ export default function ConsolePage() {
             <div className="space-y-2 text-sm">
               <Row label="continuity id" value={status.data?.continuityId ?? '—'} mono />
               <Row label="vip" value={status.data?.vip ? 'yes' : 'no'} />
-              <Row
-                label="inbound received"
-                value={`${status.data?.inbound?.used ?? 0} / ${status.data?.inbound?.cap ?? 0}`}
-              />
               {status.data?.grants?.map((g) => (
                 <Row key={g.id} label="grant" value={g.scope} />
               ))}
@@ -653,7 +640,7 @@ export default function ConsolePage() {
           )}
         </Card>
 
-        {/* ── Held slots / transfer ─────────────────────────────────── */}
+        {/* ── Held slots ────────────────────────────────────────────── */}
         <Card title="4 · held slots" className="md:col-span-2">
           {!status.data?.holding?.length ? (
             <p className="text-sm text-[var(--color-muted)]">Nothing confirmed yet.</p>
@@ -667,29 +654,14 @@ export default function ConsolePage() {
                   <div>
                     <div className="mono text-sm">{s.slotId}</div>
                     <div className="text-xs text-[var(--color-muted)]">
-                      {s.state} · acquired via {s.acquiredVia ?? '—'}
+                      {s.state} · locked to you
                     </div>
                   </div>
-                  {s.state === 'CONFIRMED' && (
-                    <Button tone="violet" onClick={() => createTransfer(s.slotId)} disabled={busy}>
-                      Create a transfer link
-                    </Button>
-                  )}
                 </li>
               ))}
             </ul>
           )}
 
-          {transferLink && (
-            <Notice tone="violet">
-              <strong>Transfer link created.</strong> The window has not started — it begins when the
-              recipient opens it (RED LINE 7). Send it, wait as long as you like, and it is still good.
-              <div className="mono mt-2 truncate text-xs">{transferLink}</div>
-              <a className="mt-2 inline-block underline" href={transferLink}>
-                open it yourself to preview (does not start the window)
-              </a>
-            </Notice>
-          )}
         </Card>
       </div>
 

@@ -27,7 +27,7 @@ import { audit } from './audit';
 import { PresenceError, type ReasonCode } from './errors';
 import * as worldid from '../worldid';
 
-export type ApprovalKind = 'purchase' | 'transfer';
+export type ApprovalKind = 'purchase';
 export type ApprovalState = 'PENDING' | 'APPROVED' | 'CONSUMED' | 'DENIED' | 'EXPIRED';
 
 export interface ApprovalRow {

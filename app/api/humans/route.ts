@@ -2,8 +2,6 @@ import { json, route } from '@/lib/api';
 import { getDb } from '@/lib/db';
 import { primaryEvent } from '@/lib/humans';
 import { activeGrants, describeScope } from '@/lib/grants';
-import { inboundAllowance } from '@/lib/slots';
-import { inboundCount } from '@/lib/transfer';
 
 /**
  * The human directory.
@@ -21,7 +19,7 @@ export const GET = route(async () => {
               (SELECT COUNT(*) FROM dev_army a WHERE a.continuity_id = h.continuity_id) AS dev_accounts,
               (SELECT COUNT(*) FROM slot s
                 WHERE s.holder_continuity_id = h.continuity_id
-                  AND s.state IN ('CONFIRMED','TRANSFER_PENDING','TRANSFERRED')) AS holds
+                  AND s.state = 'CONFIRMED') AS holds
          FROM human h
         ORDER BY h.created_at DESC
         LIMIT 200`,
@@ -48,7 +46,6 @@ export const GET = route(async () => {
       accounts: r.dev_accounts,
       holds: r.holds,
       lastFreshAuthAt: r.last_fresh_auth_at,
-      inbound: { used: inboundCount(r.continuity_id, event.id), cap: inboundAllowance(event.id, r.continuity_id) },
       grants: activeGrants(r.continuity_id, event.id).map((g) => ({
         id: g.id,
         scope: g.scope,

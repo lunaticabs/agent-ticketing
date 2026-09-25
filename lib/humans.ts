@@ -64,18 +64,14 @@ export function ensureSyntheticHuman(handle: string): HumanRow {
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
-export type TransferPolicy = 'locked' | 'gift' | 'open';
 export type LotteryMode = 'lottery' | 'fcfs';
 
 export interface EventRow {
   id: string;
   name: string;
   total_slots: number;
-  policy: TransferPolicy;
   approval_window_sec: number;
   lottery_window_sec: number;
-  transfer_inbound_cap: number;
-  transfer_window_sec: number;
   lottery_mode: LotteryMode;
   lottery_drawn_at: number | null;
   lottery_seed: string | null;
@@ -103,11 +99,8 @@ export function updateEvent(
     Pick<
       EventRow,
       | 'name'
-      | 'policy'
       | 'approval_window_sec'
       | 'lottery_window_sec'
-      | 'transfer_inbound_cap'
-      | 'transfer_window_sec'
       | 'lottery_mode'
       | 'total_slots'
     >
@@ -119,17 +112,14 @@ export function updateEvent(
   getDb()
     .prepare(
       `UPDATE event
-          SET name = ?, policy = ?, approval_window_sec = ?, lottery_window_sec = ?,
-              transfer_inbound_cap = ?, transfer_window_sec = ?, lottery_mode = ?, total_slots = ?
+          SET name = ?, approval_window_sec = ?, lottery_window_sec = ?,
+              lottery_mode = ?, total_slots = ?
         WHERE id = ?`,
     )
     .run(
       next.name,
-      next.policy,
       next.approval_window_sec,
       next.lottery_window_sec,
-      next.transfer_inbound_cap,
-      next.transfer_window_sec,
       next.lottery_mode,
       next.total_slots,
       id,
@@ -141,29 +131,23 @@ export function createEvent(input: {
   id: string;
   name: string;
   totalSlots: number;
-  policy?: TransferPolicy;
   approvalWindowSec?: number;
   lotteryWindowSec?: number;
-  transferInboundCap?: number;
-  transferWindowSec?: number;
   lotteryMode?: LotteryMode;
 }): EventRow {
   getDb()
     .prepare(
       `INSERT INTO event
-         (id, name, total_slots, policy, approval_window_sec, lottery_window_sec,
-          transfer_inbound_cap, transfer_window_sec, lottery_mode, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+         (id, name, total_slots, approval_window_sec, lottery_window_sec,
+          lottery_mode, created_at)
+       VALUES (?,?,?,?,?,?,?)`,
     )
     .run(
       input.id,
       input.name,
       input.totalSlots,
-      input.policy ?? 'gift',
       input.approvalWindowSec ?? 120,
       input.lotteryWindowSec ?? 600,
-      input.transferInboundCap ?? 2,
-      input.transferWindowSec ?? 120,
       input.lotteryMode ?? 'lottery',
       nowMs(),
     );

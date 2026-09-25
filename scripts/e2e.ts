@@ -299,108 +299,33 @@ async function beat3Deferral(): Promise<boolean> {
   return pass;
 }
 
-async function beat4Laundering(): Promise<boolean> {
+async function beat4Collapse(): Promise<boolean> {
   await api('/api/dev/reset', { body: {} });
 
   const result = await api<{
     accounts: number;
     humans: number;
-    completed: number;
-    refused: number;
+    attempted: number;
+    created: number;
+    reused: number;
+    queueLength: number;
     headline: string;
-    attempts: { outcome: string; code?: string }[];
-  }>('/api/dev/laundering', { body: { accounts: 40, humans: 2 } });
+  }>('/api/dev/army/queue', { body: { accounts: 40, humans: 2 } });
 
   if (result.status !== 200) {
     record('beat 4', '40 accounts collapse into 2 humans', false, `HTTP ${result.status}`);
     return false;
   }
 
-  const { completed, humans, refused, headline, attempts } = result.body;
-  const capPerHuman = 2;
-  const expectedMax = humans * capPerHuman;
-  const capHolds = completed <= expectedMax;
-  const actuallyRefused = refused > 0 && attempts.some((a) => a.code === 'inbound_cap_reached');
-  const pass = capHolds && actuallyRefused;
+  const { accounts, humans, created, reused, queueLength, headline } = result.body;
+  // The claim: forty signups produce as many places in line as there are humans,
+  // not as many as there are accounts. Every extra attempt lands on the entry
+  // that already exists — idempotently, which is the designed behaviour for a
+  // person refreshing a page.
+  const collapses = created === humans && reused === accounts - humans && queueLength === humans;
 
-  record(
-    'beat 4',
-    '40 accounts → 2 continuity ids → the cap holds',
-    pass,
-    `${headline} | completed=${completed} (ceiling ${humans}×${capPerHuman}=${expectedMax}), refused=${refused}`,
-  );
-  return pass;
-}
-
-async function beat5FriendTransfer(): Promise<boolean> {
-  await api('/api/dev/reset', { body: {} });
-
-  const alice = await queueHuman('alice');
-  await api('/api/dev/fast-forward', { body: {} });
-
-  // Alice buys her slot through the real gate.
-  const aliceReq = await api<{ approvalId: string; requestId: string; url?: string }>('/api/slot/request', {
-    body: {},
-    session: alice,
-  });
-  await approveViaConsent(aliceReq.body.url, aliceReq.body.requestId, 'alice');
-  const aliceClaim = await api('/api/slot/claim', { body: { approval: aliceReq.body.approvalId }, session: alice });
-  if (aliceClaim.status !== 200) {
-    record('beat 5', 'friend-to-friend transfer', false, `alice could not confirm: ${JSON.stringify(aliceClaim.body).slice(0, 200)}`);
-    return false;
-  }
-  const slotId = (aliceClaim.body as { slotId: string }).slotId;
-
-  // Bob is a friend who was never in the queue.
-  const bob = await impersonate('bob-the-friend');
-
-  const created = await api<{ ok: true; token: string; link: string; expiresAt: null }>('/api/transfer', {
-    body: { slotId, to: bob.continuityId },
-    session: alice,
-  });
-  if (created.status !== 200) {
-    record('beat 5', 'friend-to-friend transfer', false, `create failed: ${JSON.stringify(created.body).slice(0, 200)}`);
-    return false;
-  }
-  const ttlNotStarted = created.body.expiresAt === null;
-
-  // Recipient opens it — this is where the clock starts (RED LINE 7).
-  const opened = await api<{ expiresAt: number; windowSec: number; justOpened: boolean }>(
-    `/api/transfer/${created.body.token}`,
-    { body: { action: 'open' }, session: bob },
-  );
-
-  const requested = await api<{ approvalId: string; requestId: string; url?: string; boundSignal: string }>(
-    `/api/transfer/${created.body.token}`,
-    { body: { action: 'request' }, session: bob },
-  );
-  if (requested.status !== 200) {
-    record('beat 5', 'friend-to-friend transfer', false, `request failed: ${JSON.stringify(requested.body).slice(0, 200)}`);
-    return false;
-  }
-
-  const started = Date.now();
-  await approveViaConsent(requested.body.url, requested.body.requestId, 'bob-the-friend');
-  const completed = await api<{ ok: true; inboundCount: number; inboundCap: number }>(
-    `/api/transfer/${created.body.token}`,
-    { body: { action: 'complete', approval: requested.body.approvalId }, session: bob },
-  );
-  const elapsedMs = Date.now() - started;
-
-  const pass =
-    ttlNotStarted && opened.body.justOpened && completed.status === 200 && completed.body.inboundCount === 1;
-
-  record(
-    'beat 5',
-    'a normal transfer costs one real person ~seconds of attention',
-    pass,
-    pass
-      ? `TTL did not start until Bob opened it; window ${opened.body.windowSec}s; ` +
-        `approval + completion took ${elapsedMs}ms; Bob's inbound is now ` +
-        `${completed.body.inboundCount}/${completed.body.inboundCap}`
-      : `ttlNotStarted=${ttlNotStarted} opened=${opened.body.justOpened} complete=${completed.status}`,
-  );
-  return pass;
+  record('beat 4', '40 accounts → 2 continuity ids → 2 places in line', collapses, headline);
+  return collapses;
 }
 
 async function beat6Attacks(): Promise<boolean> {
@@ -612,8 +537,7 @@ async function main(): Promise<number> {
   await beat1SpeedContrast();
   await beat2HappyPath();
   await beat3Deferral();
-  await beat4Laundering();
-  await beat5FriendTransfer();
+  await beat4Collapse();
   await beat6Attacks();
 
   console.log('');

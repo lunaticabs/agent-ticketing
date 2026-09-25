@@ -16,12 +16,11 @@ import { listEvents, primaryEvent, type EventRow } from './humans';
 import { listQueue, queueStats, recomputeDrawOrder } from './queue';
 import { listSlots, slotSummary, sweep } from './slots';
 import { listApprovals } from './approval';
-import { inboundTable, listTransfers, transferSummary } from './transfer';
 import { recentAudit } from './audit';
 import { idpMode, WORLDID_ISSUER } from '../worldid/config';
 
 export interface BoardHighlight {
-  kind: 'draw' | 'deferral' | 'rejection' | 'allocation' | 'confirmation' | 'transfer' | 'none';
+  kind: 'draw' | 'deferral' | 'rejection' | 'allocation' | 'confirmation' | 'none';
   at: number;
   slotId: string | null;
   continuityId: string | null;
@@ -29,12 +28,10 @@ export interface BoardHighlight {
   code?: string;
 }
 
-const DEFERRAL_TYPES = new Set(['slot.approval_expired', 'transfer.expired']);
+const DEFERRAL_TYPES = new Set(['slot.approval_expired']);
 const REJECTION_TYPES = new Set([
   'gate.refused',
   'approval.rejected_at_gate',
-  'transfer.rejected',
-  'transfer.refused_inbound_cap',
   'attack.blocked',
 ]);
 
@@ -48,7 +45,6 @@ export function boardState(eventId?: string) {
   const entries = listQueue(event.id);
   const slots = listSlots(event.id);
   const approvals = listApprovals({ eventId: event.id, limit: 12 });
-  const transfers = listTransfers(event.id).slice(0, 12);
   const auditRows = recentAudit(25, event.id);
   const now = Date.now();
 
@@ -59,13 +55,10 @@ export function boardState(eventId?: string) {
     event: {
       id: event.id,
       name: event.name,
-      policy: event.policy,
       lotteryMode: event.lottery_mode,
       totalSlots: event.total_slots,
       approvalWindowSec: event.approval_window_sec,
       lotteryWindowSec: event.lottery_window_sec,
-      transferWindowSec: event.transfer_window_sec,
-      transferInboundCap: event.transfer_inbound_cap,
       lotteryDrawnAt: event.lottery_drawn_at,
       lotterySeed: event.lottery_seed,
       lotteryOpen: event.lottery_drawn_at === null,
@@ -98,11 +91,9 @@ export function boardState(eventId?: string) {
         state: s.state,
         holder: s.holder_continuity_id,
         holderShort: s.holder_continuity_id ? shortId(s.holder_continuity_id) : null,
-        acquiredVia: s.acquired_via,
         approvalDeadline: s.approval_deadline,
         remainingMs: s.approval_deadline ? Math.max(0, s.approval_deadline - now) : null,
         deferralCount: s.deferral_count,
-        giftUsed: s.gift_used === 1,
       })),
     },
     approvals: approvals.map((a) => ({
@@ -124,29 +115,6 @@ export function boardState(eventId?: string) {
         verified: a.verified_at,
         executed: a.executed_at,
       },
-    })),
-    transfers: {
-      ...transferSummary(event.id),
-      items: transfers.map((t) => ({
-        id: t.id,
-        slotId: t.slot_id,
-        from: t.from_continuity_id,
-        fromShort: shortId(t.from_continuity_id),
-        to: t.to_continuity_id || null,
-        toShort: t.to_continuity_id ? shortId(t.to_continuity_id) : null,
-        state: t.state,
-        openedAt: t.opened_at,
-        expiresAt: t.expires_at,
-        remainingMs: t.expires_at ? Math.max(0, t.expires_at - now) : null,
-        attemptCount: t.attempt_count,
-        lastRejectReason: t.last_reject_reason,
-      })),
-    },
-    inbound: inboundTable(event.id).map((r) => ({
-      continuityId: r.continuity_id,
-      short: shortId(r.continuity_id),
-      count: r.count,
-      cap: r.cap,
     })),
     humans: {
       total: (getDb().prepare(`SELECT COUNT(*) AS n FROM human`).get() as { n: number }).n,
@@ -187,11 +155,9 @@ function deriveHighlight(
       kind:
         newest.kind === 'lottery_settled'
           ? 'draw'
-          : newest.kind === 'transfer_expired'
-            ? 'rejection'
-            : newest.kind === 'deferred' || newest.kind === 'approval_expired'
-              ? 'deferral'
-              : 'allocation',
+          : newest.kind === 'deferred' || newest.kind === 'approval_expired'
+            ? 'deferral'
+            : 'allocation',
       at: newest.at,
       slotId: newest.slotId,
       continuityId: newest.continuityId ?? null,
@@ -264,14 +230,14 @@ function securityPanel() {
   const refusals = getDb()
     .prepare(
       `SELECT type, COUNT(*) AS n FROM audit_event
-        WHERE type IN ('gate.refused','approval.rejected_at_gate','transfer.rejected',
-                       'transfer.refused_inbound_cap','attack.blocked','slot.deferral')
+        WHERE type IN ('gate.refused','approval.rejected_at_gate',
+                       'attack.blocked','slot.deferral')
         GROUP BY type`,
     )
     .all() as { type: string; n: number }[];
   const executions = getDb()
     .prepare(
-      `SELECT COUNT(*) AS n FROM audit_event WHERE type IN ('slot.confirmed','transfer.completed')`,
+      `SELECT COUNT(*) AS n FROM audit_event WHERE type = 'slot.confirmed'`,
     )
     .get() as { n: number };
 

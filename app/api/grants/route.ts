@@ -2,7 +2,7 @@ import { json, route, requireContinuity, readJson } from '@/lib/api';
 import { issueGrant, listGrants, activeGrants, describeScope, type GrantScope } from '@/lib/grants';
 import { primaryEvent } from '@/lib/humans';
 
-const SCOPES: GrantScope[] = ['mentor:+1', 'mentor:+3', 'mentor:+5', 'vip:skip_queue'];
+const SCOPES: GrantScope[] = ['vip:skip_queue'];
 
 /**
  * T-5.1 — issue and inspect delegated authorizations.

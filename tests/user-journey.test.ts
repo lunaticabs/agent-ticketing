@@ -84,8 +84,7 @@ function statusPayload(overrides: Record<string, unknown> = {}) {
     holding: [],
     vip: false,
     grants: [],
-    inbound: { used: 0, cap: 2 },
-    slots: { total: 8, available: 7, allocated: 0, confirmed: 0, transfers: 0 },
+    slots: { total: 8, available: 7, allocated: 0, confirmed: 0 },
     openApprovals: [],
     recentTransitions: [],
     ...overrides,
@@ -294,43 +293,25 @@ test('journey · the slot countdown stays visible and keeps counting', async () 
   }
 });
 
-test('journey · a held slot offers a transfer link, and creating one is acknowledged', async () => {
+test('journey · a held slot is shown as locked, with nothing to hand it on', async () => {
   resetNetwork();
   stubSignedIn();
   stub(
     '/api/queue/status',
     statusPayload({
-      holding: [{ slotId: 'slot_tokyo_night_1', state: 'CONFIRMED', acquiredVia: 'lottery' }],
+      holding: [{ slotId: 'slot_tokyo_night_1', state: 'CONFIRMED' }],
     }),
   );
-  stub('/api/transfer', {
-    ok: true,
-    transferId: 'xfer_1',
-    token: 'tok_1',
-    link: 'http://localhost:3000/transfer/tok_1',
-    expiresAt: null,
-    directed: false,
-    policy: 'gift',
-  });
 
   const ConsolePage = (await import('../app/page')).default;
   const screen = await render(ConsolePage);
 
   try {
-    await screen.waitFor(
-      (s) => s.buttons().includes('Create a transfer link'),
-      'the transfer button on a held slot',
-    );
-    await screen.click('Create a transfer link');
-
-    await screen.waitFor(
-      (s) => s.text().includes('/transfer/tok_1'),
-      'the new link to be shown back',
-    );
-    // The window must not start until the recipient opens it — the page says so.
+    await screen.waitFor((s) => s.text().includes('slot_tokyo_night_1'), 'the held slot');
+    assert.ok(/locked to you/i.test(screen.text()), 'the slot should say it is locked to the human');
     assert.ok(
-      screen.text().includes('has not started'),
-      'the page should explain that the window has not started yet',
+      !screen.buttons().some((b) => /transfer/i.test(b)),
+      `no transfer affordance should exist; got ${JSON.stringify(screen.buttons())}`,
     );
   } finally {
     await screen.unmount();
@@ -456,90 +437,76 @@ test('journey · a link attempt requires a handle before it can be approved', as
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Journey C — a recipient receives a transfer
+//  Journey C — the demo panel's collapse beat
 // ════════════════════════════════════════════════════════════════════════════
 
-const TRANSFER_OFFER = {
-  ok: true,
-  transferId: 'xfer_1',
-  slotId: 'slot_tokyo_night_1',
-  from: 'cid_sender',
-  to: null,
-  state: 'CREATED',
-  label: null,
-  opened: false,
-  openedAt: null,
-  expiresAt: null,
-  remainingMs: null,
-  slotState: 'TRANSFER_PENDING',
-  note: 'The window starts when you press Accept.',
-};
-
-test('journey · a recipient opens a transfer link and is told the clock has not started', async () => {
+test('journey · the collapse beat is reachable and reports forty-into-two', async () => {
   resetNetwork();
-  stub('/api/transfer/tok_1', TRANSFER_OFFER);
-  stub('/api/transfer/tok_1', TRANSFER_OFFER);
+  stub('/api/health', HEALTH);
+  stub('/api/dev/army', {
+    ok: true,
+    accounts: Array.from({ length: 40 }, (_, i) => ({
+      accountIndex: i + 1,
+      handle: `bot-${i + 1}`,
+      continuityId: `cid_human_${(i % 2) + 1}`,
+    })),
+    humans: [
+      { continuityId: 'cid_human_1', accounts: 20 },
+      { continuityId: 'cid_human_2', accounts: 20 },
+    ],
+    collapseRatio: '40 accounts → 2 continuity ids',
+    note: 'simulated',
+  });
+  stub('/api/dev/army/queue', {
+    ok: true,
+    eventId: 'evt_test',
+    accounts: 40,
+    humans: 2,
+    attempted: 40,
+    created: 2,
+    reused: 38,
+    queueLength: 2,
+    headline: '40 accounts joined: 2 queue entries created, 38 landed on an entry that already existed.',
+  });
 
-  const { TransferView } = await import('../app/transfer/[token]/transfer-view');
-  const screen = await render(TransferView, { token: 'tok_1' });
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
 
   try {
-    await screen.waitFor((s) => s.text().includes('slot_tokyo_night_1'), 'the offer to load');
+    await screen.waitFor((s) => s.buttons().includes('Build 40 accounts → 2 humans'), 'the army button');
+    await screen.click('Build 40 accounts → 2 humans');
+    await screen.waitFor((s) => s.text().includes('40 accounts → 2 continuity ids'), 'the collapse ratio');
+
+    await screen.click('Have all 40 join the queue');
+    await screen.waitFor((s) => /38 landed on an entry/.test(s.text()), 'the collapse result');
     assert.ok(
-      screen.text().includes('clock has not started'),
-      'the recipient should be told the window starts on Accept',
-    );
-    assert.ok(
-      screen.buttons().includes('Accept and start the clock'),
-      `expected the accept button; got ${JSON.stringify(screen.buttons())}`,
+      calls.some((c) => c.path === '/api/dev/army/queue'),
+      'the button must reach its endpoint',
     );
   } finally {
     await screen.unmount();
   }
 });
 
-test('journey · accepting starts the window and offers fresh authorization', async () => {
+test('journey · the admin panel offers no transfer control, because there are none', async () => {
+  // Slots are locked. A control that promised transfers would be a lie.
   resetNetwork();
-  // GET previews the offer; POST opens it. One path, two methods — which is
-  // exactly why `stub` takes a method.
-  let opened = false;
-  stub(
-    '/api/transfer/tok_2',
-    () =>
-      opened
-        ? {
-            ...TRANSFER_OFFER,
-            state: 'OPENED',
-            opened: true,
-            openedAt: Date.now(),
-            expiresAt: Date.now() + 120_000,
-            remainingMs: 120_000,
-            note: 'window running',
-          }
-        : TRANSFER_OFFER,
-    200,
-    'GET',
-  );
-  stub(
-    '/api/transfer/tok_2',
-    () => {
-      opened = true;
-      return { ok: true, stage: 'opened', transferId: 'xfer_1', justOpened: true, expiresAt: Date.now() + 120_000, windowSec: 120 };
-    },
-    200,
-    'POST',
-  );
+  stub('/api/health', HEALTH);
 
-  const { TransferView } = await import('../app/transfer/[token]/transfer-view');
-  const screen = await render(TransferView, { token: 'tok_2' });
-
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
   try {
-    await screen.waitFor((s) => s.buttons().includes('Accept and start the clock'), 'the accept button');
-    await screen.click('Accept and start the clock');
-    await screen.waitFor(
-      (s) => s.text().includes('window running') || s.buttons().some((b) => b.includes('Prove it')),
-      'the window to start',
-    );
+    await screen.waitFor((s) => s.buttons().includes('Reset demo state'), 'the panel');
+    const labels = screen.buttons().join(' | ');
+    for (const gone of ['locked', 'gift', 'open', 'Run the laundering simulation']) {
+      assert.ok(
+        !screen.buttons().includes(gone),
+        `"${gone}" should no longer be offered. Buttons: ${labels}`,
+      );
+    }
+    // The speed-contrast control stays — it is what justifies the draw.
+    assert.ok(screen.buttons().includes('Run the comparison (24 bots vs 24 humans)'));
+    assert.ok(/locked/i.test(screen.text()), 'the panel should say the slots are locked');
   } finally {
     await screen.unmount();
   }
@@ -609,8 +576,6 @@ test('journey · the board renders a queue, slots and a countdown from one poll'
         stages: { requested: Date.now(), completed: null, verified: null, executed: null },
       },
     ],
-    transfers: { total: 0, open: 0, completed: 0, expired: 0, rejectedAttempts: 0, items: [] },
-    inbound: [{ continuityId: 'cid_b', short: 'bbbb2222', count: 2, cap: 2 }],
     humans: { total: 2, distinctInQueue: 2 },
     drawVerification: { settled: true, matches: true, checked: 2, seed: 'seed123', algorithm: 'sha256(seed||id)' },
     security: { consumedProofs: 1, protectedActionsExecuted: 1, totalRefusals: 3, refusals: {} },
@@ -632,7 +597,6 @@ test('journey · the board renders a queue, slots and a countdown from one poll'
       /deferred to the next candidate/.test(text),
       'the headline event — a deferral — must reach the board',
     );
-    assert.ok(/2\s*\/\s*2/.test(text), 'the inbound counter should show 2/2');
   } finally {
     await screen.unmount();
   }
@@ -662,7 +626,7 @@ test('journey · every demo control is reachable and reports back', async () => 
       'Fast-forward windows',
       'Run the comparison (24 bots vs 24 humans)',
       'Build 40 accounts → 2 humans',
-      'Run the laundering simulation',
+      'Have all 40 join the queue',
       'Run all three',
     ];
     for (const label of expected) {
@@ -692,27 +656,52 @@ test('journey · every demo control is reachable and reports back', async () => 
   }
 });
 
-test('journey · the policy knobs are all present and one is sent', async () => {
+test('journey · the speed-mode knobs are present, and the transfer policy knob is not', async () => {
   resetNetwork();
   stub('/api/health', HEALTH);
-  stub('/api/dev/policy', { ok: true, event: { id: 'evt_test', policy: 'locked' } });
+  stub('/api/dev/policy', { ok: true, event: { id: 'evt_test', lotteryMode: 'fcfs' } });
 
   const AdminPage = (await import('../app/admin/page')).default;
   const screen = await render(AdminPage);
 
   try {
-    await screen.waitFor((s) => s.buttons().includes('locked'), 'the policy knobs');
-    for (const label of ['locked', 'gift', 'open']) {
-      assert.ok(screen.buttons().includes(label), `missing policy knob "${label}"`);
-    }
+    await screen.waitFor((s) => s.buttons().includes('fcfs'), 'the speed-mode knobs');
     for (const label of ['lottery', 'fcfs']) {
       assert.ok(screen.buttons().includes(label), `missing mode knob "${label}"`);
     }
+    // The policy knob is gone. Offering `gift` or `open` would promise a
+    // transfer engine that no longer exists.
+    for (const label of ['locked', 'gift', 'open']) {
+      assert.ok(!screen.buttons().includes(label), `"${label}" must not be offered`);
+    }
 
-    await screen.click('locked');
+    await screen.click('fcfs');
     const policyCall = calls.find((c) => c.path === '/api/dev/policy');
-    assert.ok(policyCall, 'pressing a policy knob must call the policy endpoint');
-    assert.deepEqual(policyCall.body, { policy: 'locked' });
+    assert.ok(policyCall, 'pressing a mode knob must call the policy endpoint');
+    assert.deepEqual(policyCall.body, { lotteryMode: 'fcfs' });
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('journey · the grant scopes offered are exactly the ones the server accepts', async () => {
+  // Found by this test: the panel still offered mentor:+1/+3/+5 after the
+  // transfer engine was removed, so those buttons would have 400'd against an
+  // API that only accepts vip:skip_queue. A control that cannot work is worse
+  // than no control.
+  resetNetwork();
+  stub('/api/health', HEALTH);
+  stub('/api/grants', { ok: true, grant: { id: 'g_1', scope: 'vip:skip_queue' } });
+
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
+
+  try {
+    await screen.waitFor((s) => s.buttons().includes('Issue grant'), 'the grant issuer');
+    // Scopes look like `vip:skip_queue` — the filter must not catch button
+    // labels that merely contain a colon ("Prime: 6 attendees join").
+    const scopeButtons = screen.buttons().filter((b) => /^[a-z_]+:[a-z_+0-9]+$/.test(b));
+    assert.deepEqual(scopeButtons, ['vip:skip_queue'], `offered scopes: ${JSON.stringify(scopeButtons)}`);
   } finally {
     await screen.unmount();
   }

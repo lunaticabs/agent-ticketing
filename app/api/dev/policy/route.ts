@@ -4,12 +4,11 @@ import { getEvent, updateEvent, primaryEvent } from '@/lib/humans';
 import { audit } from '@/lib/audit';
 
 /**
- * T-4.5 / T-6.3 — the organiser's knobs.
+ * T-6.3 — the organiser's knobs.
  *
- * One endpoint drives the policy switch, the lottery-mode switch and the three
- * windows, because "drag the slider and watch the same attack behave differently"
- * is the product argument. Changing the policy must not corrupt existing data,
- * and it does not: the policy is read at transfer time, never baked into a slot.
+ * The lottery-mode switch and the three windows. The transfer-policy knob that
+ * used to live here is gone with the transfer engine: there is exactly one
+ * circulation policy now, so there is nothing to switch.
  */
 export const POST = route(async (req) => {
   assertDevRoutes();
@@ -21,16 +20,13 @@ export const POST = route(async (req) => {
   }
 
   const patch: Parameters<typeof updateEvent>[1] = {};
-  if (body.policy === 'locked' || body.policy === 'gift' || body.policy === 'open') {
-    patch.policy = body.policy;
-  }
   if (body.lotteryMode === 'lottery' || body.lotteryMode === 'fcfs') {
     patch.lottery_mode = body.lotteryMode;
   }
-  for (const key of ['approval_window_sec', 'lottery_window_sec', 'transfer_window_sec', 'transfer_inbound_cap', 'total_slots'] as const) {
+  for (const key of ['approval_window_sec', 'lottery_window_sec', 'total_slots'] as const) {
     const value = body[key];
     if (typeof value === 'number' && Number.isFinite(value)) {
-      (patch as Record<string, unknown>)[key] = Math.max(key === 'transfer_inbound_cap' ? 0 : 1, Math.floor(value));
+      (patch as Record<string, unknown>)[key] = Math.max(1, Math.floor(value));
     }
   }
 
@@ -48,26 +44,20 @@ export const POST = route(async (req) => {
     event: {
       id: after.id,
       name: after.name,
-      policy: after.policy,
       lotteryMode: after.lottery_mode,
       approvalWindowSec: after.approval_window_sec,
       lotteryWindowSec: after.lottery_window_sec,
-      transferWindowSec: after.transfer_window_sec,
-      transferInboundCap: after.transfer_inbound_cap,
       totalSlots: after.total_slots,
     },
-    note: 'Existing slots, transfers and audit rows are untouched: the policy is evaluated at use time.',
+    note: 'Existing slots and audit rows are untouched.',
   });
 });
 
 function summarise(e: ReturnType<typeof getEvent>) {
   if (!e) return null;
   return {
-    policy: e.policy,
     lotteryMode: e.lottery_mode,
     approvalWindowSec: e.approval_window_sec,
     lotteryWindowSec: e.lottery_window_sec,
-    transferWindowSec: e.transfer_window_sec,
-    transferInboundCap: e.transfer_inbound_cap,
   };
 }

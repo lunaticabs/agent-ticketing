@@ -21,9 +21,6 @@ let counter = 0;
 export function freshEvent(opts: {
   slots?: number;
   approvalWindowSec?: number;
-  transferWindowSec?: number;
-  transferInboundCap?: number;
-  policy?: 'locked' | 'gift' | 'open';
   lotteryMode?: 'lottery' | 'fcfs';
 } = {}): EventRow {
   counter += 1;
@@ -32,11 +29,8 @@ export function freshEvent(opts: {
     id,
     name: `Test event ${counter}`,
     totalSlots: opts.slots ?? 4,
-    policy: opts.policy ?? 'gift',
     approvalWindowSec: opts.approvalWindowSec ?? 60,
     lotteryWindowSec: 15,
-    transferWindowSec: opts.transferWindowSec ?? 60,
-    transferInboundCap: opts.transferInboundCap ?? 2,
     lotteryMode: opts.lotteryMode ?? 'lottery',
   });
   ensureSlots(id, event.total_slots);
@@ -83,8 +77,6 @@ export function reset(): void {
   const db = getDb();
   for (const table of [
     'consumed_proof',
-    'transfer_inbound',
-    'transfer',
     'approval',
     'auth_request',
     'queue_entry',
