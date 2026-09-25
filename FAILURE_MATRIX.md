@@ -66,7 +66,13 @@ The governing rule for all of it:
 | 27 | Slot already confirmed to this human | `already_owns_entitlement` | 409 | **did not run** | — |
 | 28 | Allocating more slots than `total_slots` | — | — | capped | allocation count = `total_slots` |
 
-## 5. Grants (T-5.1)
+## 5. Grants (T-5.1) — API-only
+
+Roles are not part of the demo surface: the console and the control panel render
+nothing about VIP status or grants. The endpoints below remain live and tested,
+and `/api/queue/status` still reports `vip` and `grants` as part of its payload,
+so the capability is reachable by curl and by an agent without appearing on
+screen.
 
 | # | Scenario | Machine code | HTTP | Verified by |
 |---|---|---|---|---|
@@ -92,7 +98,8 @@ page is not a warning.
 |---|---|---|---|---|
 | 44 | Any `/api/dev/*` route with `ENABLE_DEV_ROUTES` unset | `dev_routes_disabled` | **404** | indistinguishable from a route that was never deployed |
 | 45 | `/api/dev/impersonate` with no handle | `bad_request` | 400 | — |
-| 46 | A grant scope the server does not accept | `bad_request` | 400 | the admin panel offers exactly `vip:skip_queue`, asserted by a journey test |
+| 45b | Any request to a removed endpoint (`/api/humans`) | `not_found` | **404** | the route is gone, and a journey test asserts the console offers no role surface |
+| 46 | A grant scope the server does not accept | `bad_request` | 400 | the server is the only gate on scopes now that no UI offers them |
 
 ---
 

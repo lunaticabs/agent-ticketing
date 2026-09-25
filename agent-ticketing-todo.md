@@ -605,7 +605,13 @@ isFresh(authTime, maxAgeSec)                      → boolean
 演示第 4 拍改为在**队列层**展示 continuity 的塌缩：40 个账号只能产生与"人"数量
 相同的排队位。
 
-### M5 · 委托授权（P2，可降级）
+### M5 · 委托授权（P2）——**已实现，但仅保留 API**
+
+> **实现时决定**：角色/权限不是本项目的竞争点（主竞争点是"agent 合法代买"），
+> 所以 VIP / grant 的**界面已全部移除**——console 不显示 VIP 徽章，admin 面板不再
+> 有签发入口。`/api/grants` 与 `Grant` 表保留可用，`/api/queue/status` 仍返回
+> `vip` / `grants` 字段。下面 T-5.1 的验收标准按"API 层"理解。
+
 
 #### T-5.1 `[P2]` Grant 签发
 **做什么**：`mentor` = 可带 N 人入场；`vip` = 队列优先/绕过。**不是数据库 role 字段**，而是带 scope 的授权记录。

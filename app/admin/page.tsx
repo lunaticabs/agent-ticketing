@@ -373,15 +373,6 @@ export default function AdminPage() {
           </p>
         </Card>
 
-        {/* ── Grants ────────────────────────────────────────────────── */}
-        <Card title="grants (T-5.1)">
-          <GrantIssuer onIssue={(scope, grantee, ttlSec) =>
-            run(`grant ${scope}`, () =>
-              call('/api/grants', { json: { scope, grantee, ttlSec } }),
-            )
-          } disabled={busy !== null} />
-        </Card>
-
         {/* ── Output ────────────────────────────────────────────────── */}
         <Card title="panel log" className="lg:col-span-2">
           <ul className="mono max-h-60 space-y-0.5 overflow-y-auto text-xs text-[var(--color-muted)]">
@@ -399,57 +390,5 @@ export default function AdminPage() {
         World ID verification. The authorization checks they go through are the real ones.
       </p>
     </main>
-  );
-}
-
-function GrantIssuer({
-  onIssue,
-  disabled,
-}: {
-  onIssue: (scope: string, grantee: string, ttlSec: number | null) => void;
-  disabled: boolean;
-}) {
-  const [scope, setScope] = useState('vip:skip_queue');
-  const [grantee, setGrantee] = useState('');
-  const [ttl, setTtl] = useState('30');
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {/* Exactly the scopes the server accepts. A button offering a scope the
-            API rejects is worse than no button: it looks like a working feature. */}
-        {(['vip:skip_queue'] as const).map((s) => (
-          <Button key={s} size="sm" tone={scope === s ? 'brand' : 'neutral'} onClick={() => setScope(s)}>
-            {s}
-          </Button>
-        ))}
-      </div>
-      <input
-        value={grantee}
-        onChange={(e) => setGrantee(e.target.value)}
-        placeholder="continuity id (cid_…)"
-        className="mono w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] px-3 py-2 text-xs outline-none focus:border-[var(--color-brand)]"
-      />
-      <div className="flex items-center gap-2">
-        <input
-          value={ttl}
-          onChange={(e) => setTtl(e.target.value)}
-          className="mono w-20 rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1 text-xs"
-        />
-        <span className="text-xs text-[var(--color-muted)]">seconds of life (empty = never expires)</span>
-      </div>
-      <Button
-        tone="violet"
-        disabled={disabled || !grantee.trim()}
-        onClick={() => onIssue(scope, grantee.trim(), ttl.trim() ? Number(ttl) : null)}
-      >
-        Issue grant
-      </Button>
-      <p className="text-xs text-[var(--color-muted)]">
-        Not a role: a scoped record with an expiry and a revocation. It decays on its own. The
-        mentor scopes went with the transfer engine — a mentor grant raised a human&apos;s inbound
-        transfer allowance, and there are no transfers to allow.
-      </p>
-    </div>
   );
 }

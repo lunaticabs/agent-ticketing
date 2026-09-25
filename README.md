@@ -88,6 +88,26 @@ Proceed*. Nothing in the OIDC flow needs it to be trusted. Override with
 | `npm run mcp-check` | 10 live MCP checks |
 | `npm run security-check` | the T-7.2 self-check (run after `npm run build`) |
 
+### Surfaces that exist but are not on screen
+
+Two capabilities are deliberately API-only, so they stay reachable without
+competing with the demo for attention:
+
+| Endpoint | What it does | Why it is hidden |
+|---|---|---|
+| `POST /api/grants`, `GET /api/grants`, `DELETE /api/grants/{id}` | issue, list, revoke a scoped `vip:skip_queue` grant | roles are not the pitch. A VIP badge in the corner invites a question the demo does not need to answer |
+| `POST /api/lottery` | settle the current draw on demand | the window closes itself; this is the manual primitive behind that |
+
+Both are live and covered by the invariant tests. `/api/queue/status` still
+reports `vip` and `grants` in its payload, because an API should tell the truth
+whether or not a screen reads it.
+
+```bash
+# a VIP grant, start to finish, without touching the UI
+curl -sX POST localhost:3000/api/grants -H 'content-type: application/json' \
+  -d '{"scope":"vip:skip_queue","grantee":"cid_…","ttlSec":3600}'
+```
+
 `npm test` has three layers, and the third exists because the first two let three
 bugs reach a human — all of them the same shape, two copies of one piece of state
 with nothing asserting they agreed: **red-line invariants**, **URL-consistency

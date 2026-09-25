@@ -684,28 +684,52 @@ test('journey · the speed-mode knobs are present, and the transfer policy knob 
   }
 });
 
-test('journey · the grant scopes offered are exactly the ones the server accepts', async () => {
-  // Found by this test: the panel still offered mentor:+1/+3/+5 after the
-  // transfer engine was removed, so those buttons would have 400'd against an
-  // API that only accepts vip:skip_queue. A control that cannot work is worse
-  // than no control.
+test('journey · the console shows no role or grant surface', async () => {
+  // Roles are API-only for now. The demo is about an agent buying on a human's
+  // behalf, and a VIP badge in the corner invites a question the pitch does not
+  // need to answer. The endpoint still works; the screen stays quiet.
   resetNetwork();
-  stub('/api/health', HEALTH);
-  stub('/api/grants', { ok: true, grant: { id: 'g_1', scope: 'vip:skip_queue' } });
+  stubSignedIn();
+  stub(
+    '/api/queue/status',
+    statusPayload({
+      vip: true,
+      grants: [{ id: 'g_1', scope: 'vip:skip_queue', expiresAt: Date.now() + 60_000 }],
+    }),
+  );
 
-  const AdminPage = (await import('../app/admin/page')).default;
-  const screen = await render(AdminPage);
+  const ConsolePage = (await import('../app/page')).default;
+  const screen = await render(ConsolePage);
 
   try {
-    await screen.waitFor((s) => s.buttons().includes('Issue grant'), 'the grant issuer');
-    // Scopes look like `vip:skip_queue` — the filter must not catch button
-    // labels that merely contain a colon ("Prime: 6 attendees join").
-    const scopeButtons = screen.buttons().filter((b) => /^[a-z_]+:[a-z_+0-9]+$/.test(b));
-    assert.deepEqual(scopeButtons, ['vip:skip_queue'], `offered scopes: ${JSON.stringify(scopeButtons)}`);
+    await screen.waitFor((s) => s.text().includes('cid_abc123'), 'the console to load');
+    assert.doesNotMatch(screen.text(), /\bvip\b/i, 'no VIP badge should be rendered');
+    assert.doesNotMatch(screen.text(), /skip_queue/, 'no grant scope should be rendered');
   } finally {
     await screen.unmount();
   }
 });
+
+test('journey · the admin panel offers no role controls', async () => {
+  resetNetwork();
+  stub('/api/health', HEALTH);
+
+  const AdminPage = (await import('../app/admin/page')).default;
+  const screen = await render(AdminPage);
+  try {
+    await screen.waitFor((s) => s.buttons().includes('Reset demo state'), 'the panel');
+    assert.ok(!screen.buttons().includes('Issue grant'), 'the grant issuer should be gone');
+    assert.doesNotMatch(
+      screen.buttons().join(' '),
+      /vip:skip_queue|mentor/,
+      'no scope buttons should be offered',
+    );
+  } finally {
+    await screen.unmount();
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 
 test('journey · the dev-routes banner warns when the bypass is on', async () => {
   resetNetwork();

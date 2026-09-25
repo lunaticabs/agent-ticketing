@@ -430,10 +430,6 @@ export default function ConsolePage() {
           ) : (
             <div className="space-y-2 text-sm">
               <Row label="continuity id" value={status.data?.continuityId ?? '—'} mono />
-              <Row label="vip" value={status.data?.vip ? 'yes' : 'no'} />
-              {status.data?.grants?.map((g) => (
-                <Row key={g.id} label="grant" value={g.scope} />
-              ))}
               <Button
                 size="sm"
                 onClick={() => run('logout', async () => {
