@@ -53,6 +53,7 @@ import { ensureSyntheticHuman } from './humans';
 import { issueAgentToken } from './agenttoken';
 import { primaryEvent } from './humans';
 import { assertDevRoutes } from './devmode';
+import { fetchOrigin, selfCallEnv } from './selfcall';
 
 export type SessionState =
   | 'starting'
@@ -222,7 +223,7 @@ async function run(
         args: ['mcp/server.ts'],
         env: {
           ...process.env,
-          PRESENCE_BASE_URL: base,
+          ...selfCallEnv(base),
           PRESENCE_AGENT_TOKEN: token,
         } as Record<string, string>,
         stderr: 'ignore',
@@ -450,7 +451,16 @@ async function waitForDecision(
 }
 
 async function fetchJson(url: string, init: RequestInit): Promise<ToolResult> {
-  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TOOL_TIMEOUT_MS) });
+  // Through `fetchOrigin`, so a certificate problem reports itself as one rather
+  // than as `fetch failed` from three frames down.
+  const origin = new URL(url).origin;
+  const path = url.slice(origin.length);
+  let res: Response;
+  try {
+    res = await fetchOrigin(origin, path, { ...init, signal: AbortSignal.timeout(TOOL_TIMEOUT_MS) });
+  } catch (err) {
+    return { ok: false, code: 'self_call_failed', message: err instanceof Error ? err.message : String(err) };
+  }
   const text = await res.text();
   try {
     return JSON.parse(text) as ToolResult;

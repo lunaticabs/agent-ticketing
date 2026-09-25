@@ -28,6 +28,7 @@ import { assertDevRoutes, resetDemo, buildArmy } from './devmode';
 import { primaryEvent, updateEvent } from './humans';
 import { settleLottery } from './queue';
 import { ensureSlots, listSlots, sweep } from './slots';
+import { fetchOrigin } from './selfcall';
 
 export interface BotArmyOptions {
   baseUrl: string;
@@ -315,7 +316,7 @@ export async function runSpeedContrast(opts: {
 // ── HTTP helpers (deliberately real requests) ───────────────────────────────
 
 async function impersonate(baseUrl: string, handle: string): Promise<{ continuityId: string; cookie: string }> {
-  const res = await fetch(`${baseUrl}/api/dev/impersonate`, {
+  const res = await fetchOrigin(baseUrl, '/api/dev/impersonate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ handle }),
@@ -329,7 +330,7 @@ async function impersonate(baseUrl: string, handle: string): Promise<{ continuit
 }
 
 async function join(baseUrl: string, cookie: string): Promise<void> {
-  const res = await fetch(`${baseUrl}/api/queue/join`, {
+  const res = await fetchOrigin(baseUrl, '/api/queue/join', {
     method: 'POST',
     headers: { cookie, 'content-type': 'application/json' },
     body: '{}',

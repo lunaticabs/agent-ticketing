@@ -136,6 +136,21 @@ echo "  The browser will warn about the self-signed certificate once —"
 echo "  choose Advanced → Proceed."
 echo
 
+# ── Teach this process to trust the certificate we just made ───────────────
+#
+# Node does not trust a self-signed certificate, so any request the server makes
+# to its OWN https URL fails with a bare `fetch failed`. That broke every demo
+# prop driven by a self-call — the bot army, the 40-account collapse, and the MCP
+# agent — while leaving everything that only serves responses looking healthy.
+#
+# NODE_EXTRA_CA_CERTS rather than NODE_TLS_REJECT_UNAUTHORIZED=0, deliberately:
+# this adds OUR certificate to the trust store and leaves verification on for
+# everything else, so a real problem at sandbox.auth.world.org still surfaces.
+#
+# Absolute path, because the variable is read relative to the working directory
+# of whichever process opens it.
+export NODE_EXTRA_CA_CERTS="$PWD/$CRT"
+
 # exec so Ctrl-C reaches Next directly rather than this wrapper.
 exec npx next dev \
   --experimental-https \

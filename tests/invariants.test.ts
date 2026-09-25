@@ -421,6 +421,64 @@ test('a stale database is refused with advice, not a bare column error', async (
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Self-calls — the server reaching its own routes
+// ════════════════════════════════════════════════════════════════════════════
+
+test('a self-call to a loopback https origin carries a dispatcher that trusts our cert', async () => {
+  // The bug this locks down: with a portal-registered HTTPS redirect, `npm run
+  // dev` serves TLS with a certificate this project generates, and every
+  // self-call died with `fetch failed`. It took down every demo prop driven by
+  // one — the speed contrast, the 40-account collapse, the MCP agent — while
+  // leaving everything that only *serves* responses looking perfectly healthy.
+  //
+  // Two fixes were tried and both failed: NODE_TLS_REJECT_UNAUTHORIZED=0 (works,
+  // but also stops verifying sandbox.auth.world.org) and NODE_EXTRA_CA_CERTS
+  // (correct in principle, but `next dev` does not pass it to the server
+  // process — verified by reading it from inside a route, where it is undefined
+  // even when exported by the shell that started Next).
+  const { selfCallEnv } = await import('../lib/selfcall');
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+
+  const cert = path.join(process.cwd(), 'certificates', 'localhost.pem');
+  const hasCert = fs.existsSync(cert);
+
+  // A child process cannot use an in-process dispatcher, so it gets the
+  // certificate path instead — and unlike `next dev`, a child we spawn gets
+  // exactly the environment we hand it.
+  const env = selfCallEnv('https://localhost:3000');
+  assert.equal(env.PRESENCE_BASE_URL, 'https://localhost:3000');
+  if (hasCert) {
+    assert.equal(env.NODE_EXTRA_CA_CERTS, cert, 'the MCP child must be told to trust our cert');
+  }
+
+  // A real deployment is untouched: no loopback, no certificate, no deviation.
+  const remote = selfCallEnv('https://presence.example.com');
+  assert.equal(remote.NODE_EXTRA_CA_CERTS, undefined, 'a real origin must get no TLS special-casing');
+
+  // And plain http needs no trust at all.
+  const http = selfCallEnv('http://localhost:3000');
+  assert.equal(http.NODE_EXTRA_CA_CERTS, undefined);
+});
+
+test('the origin a self-call uses is the one the request arrived on', async () => {
+  // `publicBaseUrl()` answers "what URL goes in a link a human opens", derived
+  // from the registered redirect_uri. That is the wrong answer for reaching
+  // yourself, and using it has caused three separate bugs here.
+  const { selfOrigin } = await import('../lib/selfcall');
+  const fake = (url: string) => ({ url }) as unknown as import('next/server').NextRequest;
+
+  assert.equal(selfOrigin(fake('https://localhost:3000/api/dev/agent')), 'https://localhost:3000');
+  assert.equal(selfOrigin(fake('http://127.0.0.1:4000/api/dev/bots')), 'http://127.0.0.1:4000');
+  // Whatever the configured public URL says, the arriving request wins.
+  assert.notEqual(
+    selfOrigin(fake('http://localhost:3000/api/dev/bots')),
+    'https://localhost:3000',
+    'the request origin must not be replaced by the configured one',
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 //  The agent/human distinction — the fact the pitch rests on
 // ════════════════════════════════════════════════════════════════════════════
 

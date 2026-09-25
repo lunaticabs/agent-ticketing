@@ -347,6 +347,41 @@ IdP's answer. That produced a board reading "3 agent, 0 human" for a flow in whi
 a person had just picked up their phone. The human is the only party who can
 complete stage 2, so the human is who it is filed under.
 
+### 2.7 🔴 `next dev` drops environment variables, and self-calls need TLS trust
+
+Every demo prop that drives itself over HTTP was broken under `npm run dev`, and
+nothing that only *serves* responses showed a symptom. The bot army, the
+40-account collapse and the MCP agent all failed with `fetch failed`; the sign-in
+flow, the queue, the board and the gate were all fine.
+
+The mechanism, in two parts:
+
+  · The sandbox portal refuses an `http://` callback, so `npm run dev` serves TLS
+    with a certificate this project generates. Node does not trust it, so the
+    server cannot fetch its own `https://localhost:3000/...`.
+  · `next dev` **does not pass `NODE_EXTRA_CA_CERTS` through to the server
+    process.** Verified by reading `process.env` from inside a route: it is
+    undefined even when exported by the shell that started Next. So the obvious
+    fix does not work, and does not say why.
+
+Two repairs were tried before the one that holds:
+
+| Attempt | Result |
+|---|---|
+| `NODE_TLS_REJECT_UNAUTHORIZED=0` | Works, and rejected: it disables verification for every outbound connection, the real IdP included, so a genuine certificate problem there would be silenced too |
+| `NODE_EXTRA_CA_CERTS=certificates/localhost.pem` | Correct in principle and works for a plain Node process. Does not work here — `next dev` drops it |
+| **undici `Agent` with our CA, passed as `dispatcher`** | **Holds.** Trust is attached to the request rather than the process: verification stays on everywhere, only our own certificate is trusted, and the scope is exactly the self-calls |
+
+Child processes are separate: the MCP server is its own Node process, so it gets
+`NODE_EXTRA_CA_CERTS` in the environment we hand it at spawn. Unlike `next dev`, a
+child we spawn ourselves gets exactly what we give it.
+
+The generalisable lesson, and the reason this is §2.7 rather than a footnote:
+**"the server can serve responses" and "the server can call itself" are different
+properties, and only the first one is visible in a browser.** Every self-call now
+goes through `lib/selfcall.ts`, which derives the origin from the arriving request
+and turns a TLS failure into a message that names TLS.
+
 ## 6. Reproduction
 
 ```bash

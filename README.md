@@ -136,7 +136,13 @@ npm test && npm run e2e && npm run mcp-check && npm run security-check
 ```
 
 The live checks (`e2e`, `mcp-check`, `bots`) find the server themselves, over
-http or https, and check their own preconditions before running. They complete
+http or https, and check their own preconditions before running.
+
+> **Run the demo through `npm run dev`.** Several demo props work by the server
+> calling its own routes, and under `npm run dev` those calls are HTTPS against a
+> certificate this project generates. `scripts/dev.sh` handles it; a server
+> started some other way over HTTPS will answer every page correctly and fail
+> every self-driven prop with `fetch failed`. They complete
 the consent screen programmatically, so they need the fallback IdP — with a real
 client registered, start the server with `PRESENCE_IDP_MODE=local` to verify
 against the fallback without unregistering anything. See RUN_DEMO.md.

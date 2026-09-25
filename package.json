@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Presence \u2014 agent queueing with fresh human authorization at the moment a slot is handed over.",
+  "description": "Presence — agent queueing with fresh human authorization at the moment a slot is handed over.",
   "scripts": {
     "dev": "bash scripts/dev.sh auto",
     "dev:https": "bash scripts/dev.sh https",
@@ -30,6 +30,7 @@
     "openid-client": "^6.8.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "undici": "^8.11.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {

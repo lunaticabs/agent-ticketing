@@ -274,7 +274,16 @@ test('journey · the draw window says it is drawing, and counts down', async () 
   resetNetwork();
   stubSignedIn();
 
+  // Fixed, not recomputed per poll. A real server hands out a deadline that was
+  // decided when the first person joined; only `serverNow` advances. Building
+  // `closesAt: Date.now() + 12_000` inside the stub makes the deadline slide
+  // forward on every poll, so the countdown resets instead of ticking — and the
+  // assertion below passes or fails depending on whether a poll happens to land
+  // inside the window. It was passing by luck.
+  const windowOpensAt = Date.now() - 3_000;
+  const windowClosesAt = windowOpensAt + 15_000;
   let drawn = false;
+
   stub(
     '/api/queue/status',
     () =>
@@ -285,8 +294,8 @@ test('journey · the draw window says it is drawing, and counts down', async () 
                 mode: 'lottery',
                 drawn: true,
                 drawnAt: Date.now(),
-                opensAt: Date.now() - 15_000,
-                closesAt: Date.now(),
+                opensAt: windowOpensAt,
+                closesAt: windowClosesAt,
                 entrants: 3,
                 open: false,
                 msToDraw: null,
@@ -306,11 +315,11 @@ test('journey · the draw window says it is drawing, and counts down', async () 
                 mode: 'lottery',
                 drawn: false,
                 drawnAt: null,
-                opensAt: Date.now() - 3_000,
-                closesAt: Date.now() + 12_000,
+                opensAt: windowOpensAt,
+                closesAt: windowClosesAt,
                 entrants: 3,
                 open: true,
-                msToDraw: 12_000,
+                msToDraw: Math.max(0, windowClosesAt - Date.now()),
               },
               queue: {
                 entryId: 'q_1',

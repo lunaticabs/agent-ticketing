@@ -1,6 +1,7 @@
 import { json, route, readJson } from '@/lib/api';
 import { assertDevRoutes } from '@/lib/devmode';
 import { listSessions, startAgentSession } from '@/lib/mcpagent';
+import { selfOrigin } from '@/lib/selfcall';
 
 /**
  * "Human, to their agent: go and buy me a ticket."
@@ -18,7 +19,7 @@ export const POST = route(async (req) => {
     request: typeof body.request === 'string' ? body.request : undefined,
     // The origin this request arrived on. `publicBaseUrl()` would name the
     // registered redirect_uri's origin, which need not be reachable from here.
-    origin: new URL(req.url).origin,
+    origin: selfOrigin(req),
   });
 
   return json({

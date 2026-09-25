@@ -1,5 +1,6 @@
 import { json, route, readJson } from '@/lib/api';
 import { assertDevRoutes } from '@/lib/devmode';
+import { selfOrigin } from '@/lib/selfcall';
 import { runBotArmy, runSpeedContrast } from '@/lib/botarmy';
 
 /**
@@ -18,7 +19,7 @@ export const POST = route(async (req) => {
   // server started on http while the config declares https — and when they do,
   // dialling the public URL from inside the process fails with a bare
   // `fetch failed`. The request's own origin is always reachable.
-  const baseUrl = new URL(req.url).origin;
+  const baseUrl = selfOrigin(req);
   const accounts = typeof body.accounts === 'number' ? body.accounts : undefined;
   const humans = typeof body.humans === 'number' ? body.humans : undefined;
   const slots = typeof body.slots === 'number' ? body.slots : undefined;
