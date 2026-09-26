@@ -1,12 +1,26 @@
 /**
  * Startup banner.
  *
- * Two conditions are dangerous enough that they must be impossible to miss in
- * the terminal, because both of them would invalidate the demo if a judge
- * spotted them before we said them out loud:
+ * Three conditions are dangerous enough that they must be impossible to miss in
+ * the terminal, because any of them would invalidate the demo if a judge spotted
+ * it before we said it out loud:
  *
  *   * `ENABLE_DEV_ROUTES=1` — the impersonation bypass is live
  *   * local IdP fallback    — identity is simulated (the gate is still real)
+ *   * `ENABLE_SANDBOX=1`    — visitors get private events, not one shared queue
+ *
+ * ── Why this module stays free of the database ─────────────────────────────
+ *
+ * `printStartupBanner` is called from `instrumentation.ts`, which Next compiles
+ * for the Edge runtime as well as the Node one, and webpack traces dynamic
+ * `import()`s into the Edge bundle regardless of any runtime guard around them.
+ * A database import — static or dynamic — therefore fails the whole app with
+ * `Module not found: Can't resolve 'fs'`, for every request rather than just the
+ * banner. That happened twice while the public demo was being built. So the
+ * flag is read straight from `process.env` here, and the one piece of startup
+ * bookkeeping that does need the database (seeding, so a container on a fresh
+ * volume comes up working) lives in `lib/sandbox.ts`, on the path that actually
+ * needs the seeded event.
  */
 import {
   baseUrlConsistency,
@@ -20,6 +34,11 @@ import {
 import { devRoutesEnabled } from './errors';
 
 let printed = false;
+
+/** `ENABLE_SANDBOX`, read inline — see the note above about the Edge bundle. */
+function privateEventsOn(): boolean {
+  return process.env.ENABLE_SANDBOX === '1';
+}
 
 export function printStartupBanner(): void {
   if (printed) return;
@@ -39,6 +58,11 @@ export function printStartupBanner(): void {
   lines.push(`  Public base URL : ${baseUrl}`);
   lines.push(`  Redirect URI    : ${redirectUri()}`);
   lines.push(`  Dev routes      : ${devRoutesEnabled() ? 'ENABLED' : 'disabled'}`);
+  lines.push(
+    `  Private events  : ${
+      privateEventsOn() ? 'ON — each visitor gets their own event' : 'off — one shared event'
+    }`,
+  );
   lines.push('');
 
   if (!urls.consistent) {

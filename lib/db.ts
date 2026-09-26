@@ -54,6 +54,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   audit_event: ['actor'],
   approval: ['requested_via'],
   dev_agent_session: ['transcript'],
+  // Added for the public demo: one private event per visitor (lib/sandbox.ts).
+  event: ['sandbox'],
 };
 
 export function assertSchemaCurrent(db: DB): void {

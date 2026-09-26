@@ -321,6 +321,36 @@ countdown, the deferrals and the refusals-with-reasons are all on screen.
 
 ---
 
+## Running it for other people
+
+`npm run dev` is the stage build: one seeded event, one draw window, and the
+first person to settle the draw closes the queue for everybody after them. That
+is correct for a projector and wrong for a URL you hand out.
+
+`DEPLOY.md` covers the public deployment end to end — the container, the volume,
+the OIDC registration, and the two environment variables that change the
+behaviour:
+
+* **`ENABLE_SANDBOX=1`** gives each visitor their own event: their own slots,
+  their own window, their own board, behind a signed cookie. Without it, visitor
+  two meets `queue_closed` and a finished-looking page. **Identity is
+  deliberately not isolated** — one World ID is one human across the whole
+  deployment, so forty accounts still collapse to two continuity ids inside a
+  private event. Privacy is per-event; uniqueness is not. See `lib/sandbox.ts`.
+* **`ENABLE_DEV_ROUTES=1`** is what puts the `/admin` props on the public site
+  (reset, bot army, the 40-account collapse, the agent button). Every
+  destructive one is scoped to the caller's own event, so a stranger pressing
+  reset cannot disturb anyone else's demo — which was not true before and is now
+  covered by tests.
+
+A public deployment needs its **own OIDC client registration**, because the
+callback hostname is the immutable sector that decides every user's pairwise
+`sub`. `localhost` and `agent-ticket-demo.fly.dev` are different sectors, so
+pointing one client at both is not possible — and the side effect is worth
+saying out loud: identities start over on the new hostname.
+
+---
+
 ## Honest limitations
 
 * **Presence is not consent.** Fresh authentication proves a human is there, not
@@ -341,6 +371,7 @@ countdown, the deferrals and the refusals-with-reasons are all on screen.
 
 | File | What it is |
 |---|---|
+| [`DEPLOY.md`](DEPLOY.md) | deploying to a public URL: container, volume, OIDC registration, verification |
 | [`SPIKE_NOTES.md`](SPIKE_NOTES.md) | every assumption, checked against the live sandbox, with evidence |
 | [`FAILURE_MATRIX.md`](FAILURE_MATRIX.md) | 45 refusal scenarios and how each was verified |
 | [`INTEGRATION_DEBRIEF.md`](INTEGRATION_DEBRIEF.md) | the track's required integration retrospective |

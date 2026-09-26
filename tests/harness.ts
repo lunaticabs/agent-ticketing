@@ -94,6 +94,22 @@ export function reset(): void {
   }
 }
 
+/** A seeded (non-sandbox) event, which is what `primaryEvent()` falls back to. */
+export function seedEvent(slots = 4): EventRow {
+  counter += 1;
+  const id = `evt_seed_${counter}`;
+  const event = createEvent({
+    id,
+    name: `Seeded event ${counter}`,
+    totalSlots: slots,
+    approvalWindowSec: 60,
+    lotteryWindowSec: 15,
+    lotteryMode: 'lottery',
+  });
+  ensureSlots(id, event.total_slots);
+  return event;
+}
+
 export function count(sql: string, ...params: unknown[]): number {
   return (getDb().prepare(sql).get(...params) as { n: number }).n;
 }

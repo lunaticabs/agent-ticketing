@@ -1,6 +1,8 @@
 import { json, route, readJson } from '@/lib/api';
 import { assertDevRoutes, impersonate } from '@/lib/devmode';
 import { issueSession } from '@/lib/session';
+import { currentEventId } from '@/lib/eventcontext';
+import { carrySandboxCookie } from '@/lib/sandboxcookie';
 
 /**
  * T-6.2 — the identity stand-in.
@@ -12,6 +14,12 @@ import { issueSession } from '@/lib/session';
  * stage. It shares no code branch with the real verification path: it writes a
  * `human` row directly and issues a session, and it can never mint an approval.
  * See `lib/devmode.ts` for the full guardrail list.
+ *
+ * Public-demo note: the impersonated session is deliberately pinned to the
+ * *caller's* event. The bot army makes real HTTP requests back to this route and
+ * then reuses the cookie it gets here, so echoing the event cookie is what keeps
+ * all twenty-four impersonated accounts inside one private demo instead of
+ * scattering them across events.
  */
 export const POST = route(async (req) => {
   assertDevRoutes();
@@ -21,7 +29,13 @@ export const POST = route(async (req) => {
     return json({ ok: false, code: 'bad_request', message: 'handle is required' }, { status: 400 });
   }
 
-  const result = impersonate(handle);
+  // The event this session will act in, for the audit trail. Read from the
+  // ambient scope rather than resolved from the request: `resolveEventId` mints
+  // a private event when there is nothing else to go on, and a script that
+  // impersonates twenty-four accounts should not leave twenty-four abandoned
+  // events behind it.
+  const eventId = currentEventId() ?? undefined;
+  const result = impersonate(handle, eventId ?? undefined);
 
   if (body.session === false) {
     return json({ ok: true, ...result, sessionIssued: false });
@@ -42,5 +56,6 @@ export const POST = route(async (req) => {
     path: '/',
     maxAge: session.maxAge,
   });
+  carrySandboxCookie(req, response);
   return response;
 });

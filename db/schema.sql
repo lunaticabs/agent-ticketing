@@ -55,7 +55,13 @@ CREATE TABLE IF NOT EXISTS event (
   -- Seed used for the deterministic shuffle, kept so a draw can be replayed
   -- and audited. Proves the result does not depend on arrival order.
   lottery_seed          TEXT,
-  created_at            INTEGER NOT NULL
+  created_at            INTEGER NOT NULL,
+  -- 0 = the event `npm run seed` made (the stage demo, one per database).
+  -- 1 = a visitor's private event, created on first contact so that the public
+  --     site is many private demos rather than one shared queue. Everything the
+  --     sweeper drops, and everything `/api/sandbox` will hand out, is this set.
+  --     See lib/sandbox.ts.
+  sandbox               INTEGER NOT NULL DEFAULT 0 CHECK (sandbox IN (0, 1))
 );
 
 -- ── Slot ────────────────────────────────────────────────────────────────────

@@ -52,6 +52,17 @@ import { AgentClient, AgentHttpError } from '../agent/client';
 
 const BASE = process.env.PRESENCE_BASE_URL?.trim() || 'http://localhost:3000';
 const TOKEN = process.env.PRESENCE_AGENT_TOKEN?.trim() || '';
+/**
+ * The event this agent acts in.
+ *
+ * The agent is a separate process talking to the server over HTTP, so it does
+ * not inherit the caller's private event — an HTTP request is a new request, and
+ * on the public site each new request without a cookie gets a new event. The
+ * spawning server therefore names the event explicitly, and every tool call
+ * defaults to it. Unset (the terminal, `npm run mcp` by hand), the server
+ * resolves the event itself, which is what it did before private events existed.
+ */
+const EVENT_ID = process.env.PRESENCE_EVENT_ID?.trim() || '';
 
 const client = new AgentClient(BASE);
 if (TOKEN) client.setBearer(TOKEN);
@@ -200,7 +211,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: rawArgs } = request.params;
   const args = (rawArgs ?? {}) as { eventId?: string; approval?: string };
 
-  const query = args.eventId ? `?eventId=${encodeURIComponent(args.eventId)}` : '';
+  // The caller may name an event; otherwise this process's own scope answers,
+  // and only if neither exists does the server fall back to its default.
+  const eventId = args.eventId ?? EVENT_ID;
+  const query = eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
 
   try {
     switch (name) {
@@ -219,7 +233,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Every decision is made by `executeClaim` on the server, which the HTTP
         // route calls too — there is no second implementation of the gate.
         const result = await client.call('/api/slot/claim', {
-          body: { eventId: args.eventId, approval: args.approval },
+          body: { eventId: eventId || undefined, approval: args.approval },
         });
         return ok(result);
       }
@@ -241,6 +255,11 @@ async function main(): Promise<void> {
   // Diagnostics go to stderr: stdout belongs to the JSON-RPC stream and a stray
   // console.log there corrupts the protocol.
   console.error(`[presence-mcp] stdio server · target ${BASE}`);
+  console.error(
+    EVENT_ID
+      ? `[presence-mcp] scoped to event ${EVENT_ID}`
+      : '[presence-mcp] no PRESENCE_EVENT_ID — the server resolves the event per call',
+  );
   console.error(
     TOKEN
       ? '[presence-mcp] using PRESENCE_AGENT_TOKEN'

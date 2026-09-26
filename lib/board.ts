@@ -17,6 +17,7 @@ import { listQueue, lotteryWindowFor, queueStats, recomputeDrawOrder } from './q
 import { listSlots, slotSummary, sweep } from './slots';
 import { listApprovals } from './approval';
 import { actorTally, recentAudit } from './audit';
+import { sandboxEnabled } from './sandbox';
 import { idpMode, WORLDID_ISSUER } from '../worldid/config';
 
 export interface BoardHighlight {
@@ -71,6 +72,28 @@ export function boardState(eventId?: string) {
       degraded: idpMode() === 'local',
       issuer: WORLDID_ISSUER,
     },
+    /**
+     * Whether this board is a private demo, and whether it has run out of road.
+     *
+     * On the public site a visitor's draw closes once and their eight slots go
+     * with it, so the page needs to be able to say "start a new round" instead of
+     * leaving somebody staring at a finished event wondering if it is broken.
+     * Null when sandboxing is off, which is the stage and the test suite.
+     */
+    sandbox: sandboxEnabled()
+      ? (() => {
+          const pending = approvals.filter((a) => a.state === 'PENDING').length;
+          const openSlots = slots.filter((s) => s.state === 'AVAILABLE').length;
+          return {
+            active: true,
+            slotsAvailable: openSlots,
+            approvalsPending: pending,
+            // Re-offered exactly when there is nothing left to do: the draw has
+            // settled and no decision is still waiting on a human.
+            freshRoundOffered: event.sandbox === 1 && event.lottery_drawn_at !== null && pending === 0,
+          };
+        })()
+      : null,
     queue: {
       ...queueStats(event.id),
       entries: entries.slice(0, 60).map((e) => ({

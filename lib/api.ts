@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { PresenceError } from './errors';
 import { resolveCaller } from './session';
+import { applySandboxCookie, runInRequestContext } from './requestcontext';
 import type { AgentScope } from './agenttoken';
 import { WORLDID_ENVIRONMENT, WORLDID_ISSUER } from '../worldid/config';
 
@@ -201,13 +202,25 @@ export function requireContinuity(req: NextRequest, scope?: AgentScope): string 
   return caller.continuityId;
 }
 
-/** Wrap a handler so every thrown refusal becomes a structured JSON body. */
+/**
+ * Wrap a handler so every thrown refusal becomes a structured JSON body — and so
+ * the request's event is established before the handler runs.
+ *
+ * The second half is why this is the single entry point for the private-event
+ * scheme (`lib/requestcontext.ts`). `primaryEvent()` answers "which event?" from
+ * an `AsyncLocalStorage` store, and the store can only be filled by something
+ * that wraps the handler. Doing it here means all 35 handlers are scoped
+ * correctly and a new one is correct by default, rather than each author having
+ * to remember. Two of them take a route context as a second argument, so the
+ * arguments are forwarded generically.
+ */
 export function route<T extends unknown[]>(
   handler: (req: NextRequest, ...rest: T) => Promise<NextResponse> | NextResponse,
 ) {
   return async (req: NextRequest, ...rest: T): Promise<NextResponse> => {
     try {
-      return await handler(req, ...rest);
+      const { result, cookie } = await runInRequestContext(req, async () => handler(req, ...rest));
+      return applySandboxCookie(result, cookie);
     } catch (err) {
       return toErrorResponse(err);
     }

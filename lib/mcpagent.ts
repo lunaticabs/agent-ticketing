@@ -66,10 +66,11 @@ import { getDb, nowMs } from './db';
 import { newId } from './ids';
 import { audit } from './audit';
 import { PresenceError } from './errors';
-import { getHuman, primaryEvent, type HumanRow } from './humans';
+import { getEvent, getHuman, primaryEvent, type HumanRow } from './humans';
 import { issueAgentToken } from './agenttoken';
 import { assertDevRoutes } from './devmode';
 import { fetchOrigin, selfCallEnv } from './selfcall';
+import { currentEventId } from './eventcontext';
 
 export type SessionState =
   | 'starting'
@@ -185,6 +186,16 @@ export function startAgentSession(input: {
   request?: string;
   /** Origin to call back on — the one the request arrived on, not the configured one. */
   origin: string;
+  /**
+   * The event the run belongs to.
+   *
+   * Defaults to the caller's own scope, which on the public site is the
+   * visitor's private event: the agent's tool calls, the approval it asks for,
+   * and the slot it ends up holding must all land in the same demo as the panel
+   * that started it. Without this the agent would queue in whatever event a
+   * cookie-less request resolves to and the panel would never see it move.
+   */
+  eventId?: string | null;
 }): StartResult {
   assertDevRoutes();
 
@@ -198,7 +209,7 @@ export function startAgentSession(input: {
   const handle = handleOf(human);
   const request =
     input.request?.trim() ||
-    `Get me a ticket for ${primaryEvent()?.name ?? 'the event'}. I will confirm when you need me.`;
+    `Get me a ticket for ${eventName(input.eventId ?? currentEventId())}. I will confirm when you need me.`;
 
   const id = newId('agent');
   const now = nowMs();
@@ -225,7 +236,7 @@ export function startAgentSession(input: {
     payload: { sessionId: id, handle, request, note: 'SIMULATED human asking a real MCP agent to act' },
   });
 
-  void run(id, human.continuity_id, handle, input.origin);
+  void run(id, human.continuity_id, handle, input.origin, input.eventId ?? currentEventId());
   return { sessionId: id, continuityId: human.continuity_id, handle, request };
 }
 
@@ -240,6 +251,8 @@ async function run(
   continuityId: string,
   handle: string,
   base: string,
+  /** The private event this run belongs to, if any. See `startAgentSession`. */
+  eventId: string | null,
 ): Promise<void> {
   if (running.has(sessionId)) return;
   running.add(sessionId);
@@ -265,6 +278,10 @@ async function run(
           ...process.env,
           ...selfCallEnv(base),
           PRESENCE_AGENT_TOKEN: token,
+          // The MCP server is its own process talking over HTTP, so it does not
+          // inherit this request's event scope. Naming it here is what keeps an
+          // agent's tool calls inside the visitor's own demo.
+          ...(eventId ? { PRESENCE_EVENT_ID: eventId } : {}),
         } as Record<string, string>,
         stderr: 'ignore',
       }),
@@ -341,7 +358,7 @@ async function run(
       detail: 'requesting an authorization; max_age=0, so a new proof is required',
     });
 
-    const asked = await fetchJson(`${base}/api/slot/request`, {
+    const asked = await fetchJson(`${base}/api/slot/request${eventQuery(eventId)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({}),
@@ -369,7 +386,7 @@ async function run(
     }
 
     // ── wait for the human ──
-    const decision = await waitForDecision(base, token, String(asked.approvalId), sessionId);
+    const decision = await waitForDecision(base, token, String(asked.approvalId), sessionId, eventId);
     if (decision !== 'APPROVED') {
       step(sessionId, {
         kind: 'error',
@@ -469,13 +486,14 @@ async function waitForDecision(
   token: string,
   approvalId: string,
   sessionId: string,
+  eventId: string | null,
 ): Promise<'APPROVED' | 'DENIED' | 'EXPIRED'> {
   const deadline = Date.now() + HUMAN_WAIT_MS;
   let noted = false;
 
   while (Date.now() < deadline) {
     await sleep(900);
-    const view = await fetchJson(`${base}/api/approval/${approvalId}`, {
+    const view = await fetchJson(`${base}/api/approval/${approvalId}${eventQuery(eventId)}`, {
       headers: { authorization: `Bearer ${token}` },
     });
     const state = String(view.state ?? 'PENDING');
@@ -488,6 +506,25 @@ async function waitForDecision(
     }
   }
   return 'EXPIRED';
+}
+
+/**
+ * The event the run is about, by id when we have one and by scope otherwise.
+ *
+ * `primaryEvent()` is the fallback rather than an error: run from a terminal
+ * (`npm run mcp`, `npm run agent`) there is no request scope, and "the event" is
+ * then exactly what it always was.
+ */
+function eventName(eventId: string | null): string {
+  if (eventId) {
+    const event = getEvent(eventId);
+    if (event) return event.name;
+  }
+  return primaryEvent()?.name ?? 'the event';
+}
+
+function eventQuery(eventId: string | null): string {
+  return eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
 }
 
 async function fetchJson(url: string, init: RequestInit): Promise<ToolResult> {

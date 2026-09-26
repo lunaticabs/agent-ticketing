@@ -24,6 +24,22 @@ import { describeTarget, reportPreflight, PreflightError, requireDevRoutes, requ
 
 /** Resolved in `main`, once the server has been found. */
 let BASE = '';
+/**
+ * The event every check is about — the seeded one, resolved once at startup.
+ *
+ * This matters only when the server runs with `ENABLE_SANDBOX=1`, where a
+ * request without a private-event cookie is a *new visitor* and therefore gets a
+ * brand-new event. Without pinning, this script's calls would each land in an
+ * event of their own: the queue join and the approval would be about different
+ * events, and every check would fail for a reason that has nothing to do with
+ * the thing it is checking.
+ *
+ * Pinning is also the honest reading of what these checks are: an automated
+ * rehearsal of the runbook, which is written about the seeded event.
+ */
+let EVENT = '';
+/** For the one call that does not go through `api()` — see `impersonate`. */
+const ev = () => (EVENT ? `?eventId=${encodeURIComponent(EVENT)}` : '');
 
 interface BotArmyShape {
   allocated: { bots: number; humans: number; empty: number };
@@ -85,7 +101,15 @@ async function api<T = Record<string, unknown>>(
   path: string,
   opts: { method?: string; body?: unknown; session?: Session; bearer?: string } = {},
 ): Promise<ApiResponse<T>> {
-  const res = await fetch(`${BASE}${path}`, {
+  // Every request this script makes is about the SAME event, so the event is
+  // pinned here rather than at each of twenty call sites. On a server running
+  // with `ENABLE_SANDBOX=1` a request that names no event is treated as a new
+  // visitor and gets a private one, so an unpinned call is not "the default
+  // event" — it is a different event, and the check that follows it would be
+  // about a queue this script never joined. Pinning once is the difference
+  // between a rehearsal and twenty chances to forget.
+  const pinned = EVENT ? (path.includes('?') ? `${path}&eventId=${encodeURIComponent(EVENT)}` : `${path}?eventId=${encodeURIComponent(EVENT)}`) : path;
+  const res = await fetch(`${BASE}${pinned}`, {
     method: opts.method ?? (opts.body ? 'POST' : 'GET'),
     headers: {
       ...(opts.body ? { 'content-type': 'application/json' } : {}),
@@ -106,7 +130,7 @@ async function api<T = Record<string, unknown>>(
 }
 
 async function impersonate(handle: string): Promise<Session> {
-  const res = await fetch(`${BASE}/api/dev/impersonate`, {
+  const res = await fetch(`${BASE}/api/dev/impersonate${ev()}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ handle }),
@@ -120,9 +144,13 @@ async function impersonate(handle: string): Promise<Session> {
 /** Sign a human in, put them in the queue, and settle the draw. */
 async function queueHuman(handle: string): Promise<Session> {
   const session = await impersonate(handle);
-  await api('/api/queue/join', { body: {}, session });
+  await api(`/api/queue/join`, { body: {}, session });
   return session;
 }
+// NOTE: the impersonation call is pinned too. The session cookie it returns
+// carries the event the server scoped that request to, so an unpinned call would
+// hand back a session belonging to a private event — and every check after it
+// would be about a queue this script never joined.
 
 /** Complete a local-fallback approval by driving the consent endpoint. */
 async function approveViaConsent(url: string | undefined, requestId: string, handle: string, stale = false) {
@@ -138,8 +166,8 @@ async function approveViaConsent(url: string | undefined, requestId: string, han
 // ── Beats ───────────────────────────────────────────────────────────────────
 
 async function beat0Setup(): Promise<boolean> {
-  const reset = await api('/api/dev/reset', { body: {} });
-  const prime = await api('/api/dev/prime', { body: { humans: 6 } });
+  const reset = await api(`/api/dev/reset`, { body: {} });
+  const prime = await api(`/api/dev/prime`, { body: { humans: 6 } });
   const ok = reset.status === 200 && prime.status === 200;
   record('setup', 'reset + prime the demo state', ok, `reset=${reset.status} prime=${prime.status}`);
   return ok;
@@ -152,7 +180,7 @@ async function beat1SpeedContrast(): Promise<boolean> {
     lottery: BotArmyShape;
     verdict: string;
     statistics: { fcfsZ: number; lotteryZ: number; fairShareSd: number; slotCount: number; entrantCount: number };
-  }>('/api/dev/bots', { body: { mode: 'compare', accounts: 24, humans: 24, slots: 24 } });
+  }>(`/api/dev/bots`, { body: { mode: 'compare', accounts: 24, humans: 24, slots: 24 } });
 
   if (contrast.status !== 200) {
     record('beat 1', 'speed contrast', false, `HTTP ${contrast.status}: ${JSON.stringify(contrast.body).slice(0, 200)}`);
@@ -181,15 +209,15 @@ async function beat1SpeedContrast(): Promise<boolean> {
       `${statistics.slotCount} slots / ${statistics.entrantCount} entrants)`,
   );
 
-  await api('/api/dev/reset', { body: {} });
+  await api(`/api/dev/reset`, { body: {} });
   return pass;
 }
 
 async function beat2HappyPath(): Promise<{ pass: boolean; session?: Session }> {
-  await api('/api/dev/reset', { body: {} });
+  await api(`/api/dev/reset`, { body: {} });
 
   const alice = await queueHuman('alice');
-  await api('/api/dev/fast-forward', { body: {} });
+  await api(`/api/dev/fast-forward`, { body: {} });
 
   const requested = await api<{
     ok: true;
@@ -199,7 +227,7 @@ async function beat2HappyPath(): Promise<{ pass: boolean; session?: Session }> {
     slotId: string;
     boundAction: string;
     mode: string;
-  }>('/api/slot/request', { body: {}, session: alice });
+  }>(`/api/slot/request`, { body: {}, session: alice });
 
   if (requested.status !== 200) {
     record('beat 2', 'happy path: agent asks, human approves, slot confirmed', false, `request failed: ${JSON.stringify(requested.body).slice(0, 200)}`);
@@ -254,15 +282,15 @@ async function beat2HappyPath(): Promise<{ pass: boolean; session?: Session }> {
 }
 
 async function beat3Deferral(): Promise<boolean> {
-  await api('/api/dev/reset', { body: {} });
+  await api(`/api/dev/reset`, { body: {} });
 
   // Two humans, one slot: the second is the one who benefits from the first
   // missing their window.
   const first = await queueHuman('defer-first');
   await queueHuman('defer-second');
-  await api('/api/dev/fast-forward', { body: { deferAllocations: false } });
+  await api(`/api/dev/fast-forward`, { body: { deferAllocations: false } });
 
-  const status = await api<{ allocation: { slotId: string }[] }>('/api/queue/status', { session: first });
+  const status = await api<{ allocation: { slotId: string }[] }>(`/api/queue/status`, { session: first });
   if (!status.body.allocation?.length) {
     record('beat 3', 'missing the window defers the slot', false, 'the first human was not allocated a slot');
     return false;
@@ -276,14 +304,14 @@ async function beat3Deferral(): Promise<boolean> {
   const board = await api<{
     slots: { items: { id: string; state: string; holderShort: string | null; deferralCount: number }[] };
     highlight: { kind: string; message: string };
-  }>('/api/board/state');
+  }>(`/api/board/state`);
 
   const slot = board.body.slots.items.find((s) => s.id === slotId);
   const deferred = Boolean(slot && slot.deferralCount > 0);
   const boardShowsIt = board.body.highlight.kind === 'deferral';
 
   // The original candidate must now be unable to claim, even with a fresh proof.
-  const late = await api<{ code: string }>('/api/slot/request', { body: {}, session: first });
+  const late = await api<{ code: string }>(`/api/slot/request`, { body: {}, session: first });
   const refusedForLate = late.status !== 200;
 
   const pass = deferred && boardShowsIt && refusedForLate;
@@ -300,7 +328,7 @@ async function beat3Deferral(): Promise<boolean> {
 }
 
 async function beat4Collapse(): Promise<boolean> {
-  await api('/api/dev/reset', { body: {} });
+  await api(`/api/dev/reset`, { body: {} });
 
   const result = await api<{
     accounts: number;
@@ -310,7 +338,7 @@ async function beat4Collapse(): Promise<boolean> {
     reused: number;
     queueLength: number;
     headline: string;
-  }>('/api/dev/army/queue', { body: { accounts: 40, humans: 2 } });
+  }>(`/api/dev/army/queue`, { body: { accounts: 40, humans: 2 } });
 
   if (result.status !== 200) {
     record('beat 4', '40 accounts collapse into 2 humans', false, `HTTP ${result.status}`);
@@ -331,7 +359,7 @@ async function beat4Collapse(): Promise<boolean> {
 async function beat6Attacks(): Promise<boolean> {
   const attacks = await api<{
     attacks: { attack: string; blocked: boolean; code: string; message: string; verification: { protectedActionHappened: boolean; detail: string } }[];
-  }>('/api/dev/attack', { body: { attack: 'all' } });
+  }>(`/api/dev/attack`, { body: { attack: 'all' } });
 
   if (attacks.status !== 200) {
     record('beat 6', 'replay / tamper / environment swap', false, `HTTP ${attacks.status}`);
@@ -355,15 +383,15 @@ async function beat6Attacks(): Promise<boolean> {
 // ── Failure matrix (T-7.1) ──────────────────────────────────────────────────
 
 async function failureMatrix(): Promise<boolean> {
-  await api('/api/dev/reset', { body: {} });
+  await api(`/api/dev/reset`, { body: {} });
   const alice = await queueHuman('failure-alice');
-  await api('/api/dev/fast-forward', { body: {} });
+  await api(`/api/dev/fast-forward`, { body: {} });
 
   const cases: { name: string; code: string; actual: string; status: number }[] = [];
 
   // 1. no approval presented
   {
-    const res = await api<{ code: string }>('/api/slot/claim', { body: {}, session: alice });
+    const res = await api<{ code: string }>('/api/slot/claim', { body: { eventId: EVENT }, session: alice });
     cases.push({ name: 'claim with no approval', code: 'approval_required', actual: res.body.code, status: res.status });
   }
 
@@ -402,7 +430,7 @@ async function failureMatrix(): Promise<boolean> {
 
   // 6. a stale authentication
   {
-    const requested = await api<{ approvalId: string; requestId: string; url?: string }>('/api/slot/request', {
+    const requested = await api<{ approvalId: string; requestId: string; url?: string }>(`/api/slot/request`, {
       body: {},
       session: alice,
     });
@@ -416,12 +444,12 @@ async function failureMatrix(): Promise<boolean> {
 
   // 7. an expired approval window
   {
-    const requested = await api<{ approvalId: string; requestId: string; url?: string }>('/api/slot/request', {
+    const requested = await api<{ approvalId: string; requestId: string; url?: string }>(`/api/slot/request`, {
       body: {},
       session: alice,
     });
     // Let the window lapse without answering, then try to use it.
-    await api('/api/dev/fast-forward', { body: {} });
+    await api(`/api/dev/fast-forward`, { body: {} });
     await delay(120);
     const res = await api<{ code: string }>('/api/slot/claim', {
       body: { approval: requested.body.approvalId },
@@ -432,9 +460,9 @@ async function failureMatrix(): Promise<boolean> {
 
   // 8. denied by the human
   {
-    await api('/api/dev/reset', { body: {} });
+    await api(`/api/dev/reset`, { body: {} });
     const denier = await queueHuman('denier');
-    await api('/api/dev/fast-forward', { body: {} });
+    await api(`/api/dev/fast-forward`, { body: {} });
     const requested = await api<{ approvalId: string; requestId: string }>('/api/slot/request', { body: {}, session: denier });
     await api('/api/auth/deny', { body: { requestId: requested.body.requestId }, session: denier });
     const res = await api<{ code: string }>('/api/slot/claim', {
@@ -482,11 +510,11 @@ async function currentEventId(): Promise<string> {
 // ── Concurrency (RED LINE 5, over real sockets) ─────────────────────────────
 
 async function concurrencyCheck(): Promise<boolean> {
-  await api('/api/dev/reset', { body: {} });
+  await api(`/api/dev/reset`, { body: {} });
   const alice = await queueHuman('race-alice');
-  await api('/api/dev/fast-forward', { body: {} });
+  await api(`/api/dev/fast-forward`, { body: {} });
 
-  const requested = await api<{ approvalId: string; requestId: string; url?: string }>('/api/slot/request', {
+  const requested = await api<{ approvalId: string; requestId: string; url?: string }>(`/api/slot/request`, {
     body: {},
     session: alice,
   });
@@ -501,7 +529,7 @@ async function concurrencyCheck(): Promise<boolean> {
   const successes = [a, b].filter((r) => r.status === 200).length;
   const codes = [a, b].map((r) => r.body.code ?? 'OK').join(' / ');
 
-  const board = await api<{ slots: { confirmed: number } }>('/api/board/state');
+  const board = await api<{ slots: { confirmed: number } }>(`/api/board/state`);
   const exactlyOne = successes === 1 && board.body.slots.confirmed === 1;
 
   record(
@@ -519,6 +547,7 @@ async function main(): Promise<number> {
   try {
     const target = await resolveTarget();
     BASE = target.base;
+    EVENT = await currentEventId();
     requireDevRoutes(target);
     // The six beats include "the agent asks a human and the human approves",
     // which a script can only complete against the simulated provider.

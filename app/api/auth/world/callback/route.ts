@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { ensureHuman, touchFreshAuth } from '@/lib/humans';
 import { issueSession } from '@/lib/session';
+import { carrySandboxCookie } from '@/lib/sandboxcookie';
 import { audit } from '@/lib/audit';
 import * as worldid from '@/worldid';
 
@@ -67,6 +68,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     path: '/',
     maxAge: session.maxAge,
   });
+  // Signing in must not move the visitor to a different private event. See
+  // `lib/sandboxcookie.ts`.
+  carrySandboxCookie(req, response);
   return response;
 }
 

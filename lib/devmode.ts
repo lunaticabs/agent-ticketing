@@ -70,7 +70,7 @@ export interface ImpersonationResult {
  * demo accidentally routed a protected action through it, the gate would refuse.
  * That separation is the point of requirement 2 above.
  */
-export function impersonate(handle: string): ImpersonationResult {
+export function impersonate(handle: string, eventId?: string): ImpersonationResult {
   assertDevRoutes();
   const existing = getDb()
     .prepare(`SELECT * FROM human WHERE issuer = ? AND subject = ?`)
@@ -80,6 +80,9 @@ export function impersonate(handle: string): ImpersonationResult {
   audit({
     type: 'dev.impersonation',
     continuityId: human.continuity_id,
+    // Filed under the event the caller is working in, so a private demo's audit
+    // trail reads as one story instead of leaking into the seeded event's.
+    eventId: eventId ?? null,
     severity: 'warn',
     payload: {
       handle,
@@ -111,23 +114,29 @@ export interface ArmyBuildResult {
  * This is the shape of the attack defence 3 exists for: a scalper buys 40
  * accounts, and from the system's point of view there are still two people.
  */
-export function buildArmy(opts: { accounts?: number; humans?: number } = {}): ArmyBuildResult {
+export function buildArmy(opts: { accounts?: number; humans?: number; eventId?: string } = {}): ArmyBuildResult {
   assertDevRoutes();
   const accounts = Math.max(1, Math.min(opts.accounts ?? 40, 200));
   const humanCount = Math.max(1, Math.min(opts.humans ?? 2, accounts));
+  // Handles are UNIQUE across the whole database, so with one private event per
+  // visitor two bot armies would collide on `bot-account-01`. Namespacing by
+  // event keeps every visitor's army — and therefore every visitor's board —
+  // their own.
+  const scope = opts.eventId ?? '';
 
   return tx((db) => {
-    db.prepare(`DELETE FROM dev_army`).run();
+    if (scope) db.prepare(`DELETE FROM dev_army WHERE handle LIKE ?`).run(`${scope}:%`);
+    else db.prepare(`DELETE FROM dev_army`).run();
 
     const humanIds: string[] = [];
     for (let h = 0; h < humanCount; h += 1) {
-      humanIds.push(ensureSyntheticHuman(`scalper-human-${h + 1}`).continuity_id);
+      humanIds.push(ensureSyntheticHuman(`${scope}${scope ? ':' : ''}scalper-human-${h + 1}`).continuity_id);
     }
 
     const members: ArmyMember[] = [];
     for (let i = 0; i < accounts; i += 1) {
       const continuityId = humanIds[i % humanCount];
-      const handle = `bot-account-${String(i + 1).padStart(2, '0')}-of-human-${(i % humanCount) + 1}`;
+      const handle = `${scope}${scope ? ':' : ''}bot-account-${String(i + 1).padStart(2, '0')}-of-human-${(i % humanCount) + 1}`;
       db.prepare(
         `INSERT INTO dev_army (id, account_index, handle, continuity_id, created_at) VALUES (?,?,?,?,?)`,
       ).run(newId('army'), i + 1, handle, continuityId, nowMs());
@@ -158,12 +167,20 @@ export function buildArmy(opts: { accounts?: number; humans?: number } = {}): Ar
   });
 }
 
-export function listArmy(): ArmyMember[] {
-  return (
-    getDb()
-      .prepare(`SELECT account_index, handle, continuity_id FROM dev_army ORDER BY account_index`)
-      .all() as { account_index: number; handle: string; continuity_id: string }[]
-  ).map((r) => ({ accountIndex: r.account_index, handle: r.handle, continuityId: r.continuity_id }));
+export function listArmy(eventId?: string): ArmyMember[] {
+  const rows = (
+    eventId
+      ? getDb()
+          .prepare(
+            `SELECT account_index, handle, continuity_id FROM dev_army
+              WHERE handle LIKE ? ORDER BY account_index`,
+          )
+          .all(`${eventId}:%`)
+      : getDb()
+          .prepare(`SELECT account_index, handle, continuity_id FROM dev_army ORDER BY account_index`)
+          .all()
+  ) as { account_index: number; handle: string; continuity_id: string }[];
+  return rows.map((r) => ({ accountIndex: r.account_index, handle: r.handle, continuityId: r.continuity_id }));
 }
 
 // ── Demo fast paths ─────────────────────────────────────────────────────────
@@ -199,13 +216,14 @@ export function runArmyQueueDemo(opts: { eventId?: string; accounts?: number; hu
   const accounts = Math.max(1, Math.min(opts.accounts ?? 40, 200));
   const humans = Math.max(1, Math.min(opts.humans ?? 2, accounts));
 
-  const army = buildArmy({ accounts, humans });
+  const army = buildArmy({ accounts, humans, eventId: opts.eventId });
   const event = opts.eventId ? getEvent(opts.eventId) : primaryEvent();
   if (!event) throw new PresenceError('event_not_found', 'no event');
 
   // A fresh window, or the draw would already have closed and every join would
-  // be refused for the wrong reason.
-  resetDemo();
+  // be refused for the wrong reason. Scoped to this event: on the public site
+  // the other visitors' queues are none of this button's business.
+  resetDemo({ eventId: event.id });
   sweep(event.id);
 
   let created = 0;
@@ -267,25 +285,54 @@ export function runArmyQueueDemo(opts: { eventId?: string; accounts?: number; hu
  * `no such table: transfer_inbound` until it was caught by running the suite
  * against a freshly built server.
  */
-export function resetDemo(): { reset: true; eventId: string } {
+/**
+ * "Back to a fresh window."
+ *
+ * ── Why this is now event-scoped ───────────────────────────────────────────
+ *
+ * On the stage there was one event, so "clear the demo state" and "clear every
+ * table" were the same instruction and the second one was shorter. On the public
+ * site they are catastrophically different: an unscoped `DELETE FROM queue_entry`
+ * run by one visitor would empty *every other visitor's* queue at the same
+ * moment, and the button that does it is on a page anyone can open. So the wipe
+ * is now narrowed to one event, and only the identity-level tables — which have
+ * no `event_id` because one World ID is one human everywhere — are still global.
+ *
+ * `opts` is optional so `npm run reset` and the scripts keep their old meaning:
+ * with no `eventId`, every event's demo state is cleared, which is what "reset
+ * the demo database" should mean from a terminal.
+ */
+export function resetDemo(opts: { eventId?: string } = {}): { reset: true; eventId: string } {
   assertDevRoutes();
+  const target = opts.eventId;
+  // `sandbox.touched` rows are the liveness heartbeat the sandbox sweeper reads,
+  // so a scoped reset must not delete them — otherwise resetting a private demo
+  // would make it look abandoned and it would be collected mid-session.
+  const KEEP = 'sandbox.touched';
+
   const eventId = tx((db) => {
-    for (const table of [
-      'consumed_proof',
-      'approval',
-      'auth_request',
-      'queue_entry',
-      'dev_army',
-      'grant_',
-      'audit_event',
-    ]) {
-      db.prepare(`DELETE FROM ${table}`).run();
+    if (target) {
+      db.prepare(`DELETE FROM approval WHERE event_id = ?`).run(target);
+      db.prepare(`DELETE FROM queue_entry WHERE event_id = ?`).run(target);
+      db.prepare(`DELETE FROM grant_ WHERE event_id = ?`).run(target);
+      db.prepare(`DELETE FROM dev_army WHERE handle LIKE ?`).run(`${target}:%`);
+      // `consumed_proof` has no `event_id`; the purchase action encodes it, so
+      // that is what identifies this event's proofs among the global ones.
+      db.prepare(`DELETE FROM consumed_proof WHERE bound_action = ?`).run(`buy_slot:${target}`);
+      db.prepare(`DELETE FROM audit_event WHERE event_id = ? AND type <> ?`).run(target, KEEP);
+    } else {
+      for (const table of ['consumed_proof', 'approval', 'auth_request', 'queue_entry', 'dev_army', 'grant_']) {
+        db.prepare(`DELETE FROM ${table}`).run();
+      }
+      db.prepare(`DELETE FROM audit_event WHERE type <> ?`).run(KEEP);
     }
+
     // Rebuild the slot set from scratch rather than resetting it in place. The
     // demo props legitimately grow the slot count (the laundering simulation
     // needs inventory), and leaving those extra rows behind would let a later
     // run allocate more slots than the event declares.
-    const event = primaryEvent();
+    const event = target ? getEvent(target) : primaryEvent();
+    if (!event) throw new PresenceError('event_not_found', `no event ${target}`);
     db.prepare(`DELETE FROM slot WHERE event_id = ?`).run(event.id);
     db.prepare(
       `UPDATE event SET lottery_drawn_at = NULL, lottery_seed = NULL WHERE id = ?`,
@@ -295,14 +342,14 @@ export function resetDemo(): { reset: true; eventId: string } {
       type: 'dev.reset',
       eventId: event.id,
       severity: 'warn',
-      payload: { note: 'demo state cleared' },
+      payload: { note: 'demo state cleared', scoped: Boolean(target) },
     });
     return event.id;
   });
 
   // Recreate exactly the event's capacity, outside the transaction above so
   // `ensureSlots` sees a settled table.
-  ensureSlots(eventId, primaryEvent().total_slots);
+  ensureSlots(eventId, getEvent(eventId)!.total_slots);
 
   return { reset: true, eventId };
 }
@@ -359,10 +406,18 @@ export function primeScenario(opts: {
   if (!event) throw new PresenceError('event_not_found', 'no event');
   const humans = Math.max(1, Math.min(opts.humans ?? 6, 40));
 
+  // Two things this has to be on the public site, and was not on the stage:
+  // handles are namespaced per event (the identity table is global, and two
+  // visitors' scenarios would otherwise share one synthetic crowd), and any
+  // previous state for THIS event goes first, or the draw it just settled would
+  // refuse the joins below with `queue_closed`.
+  const scope = `${event.id}:`;
+  resetDemo({ eventId: event.id });
+
   sweep(event.id);
   let joined = 0;
   for (let i = 0; i < humans; i += 1) {
-    const human = ensureSyntheticHuman(`attendee-${i + 1}`);
+    const human = ensureSyntheticHuman(`${scope}attendee-${i + 1}`);
     try {
       joinQueue(event.id, human.continuity_id);
       joined += 1;

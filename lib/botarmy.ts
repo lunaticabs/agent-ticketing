@@ -25,7 +25,7 @@
  * terminal and `app/api/dev/bots/route.ts` for the board's button.
  */
 import { assertDevRoutes, resetDemo, buildArmy } from './devmode';
-import { primaryEvent, updateEvent } from './humans';
+import { getEvent, primaryEvent, updateEvent } from './humans';
 import { settleLottery } from './queue';
 import { ensureSlots, listSlots, sweep } from './slots';
 import { fetchOrigin } from './selfcall';
@@ -43,6 +43,13 @@ export interface BotArmyOptions {
    * teaches the wrong thing.
    */
   reset?: boolean;
+  /**
+   * Which event to run against. Every request the army makes is a real HTTP
+   * self-call, so the event has to travel as a query parameter — the *caller's*
+   * AsyncLocalStorage scope does not survive into the server's handling of a new
+   * request. Omitted (the terminal script), it is the seeded event.
+   */
+  eventId?: string;
 }
 
 export interface BotArmyResult {
@@ -76,8 +83,8 @@ export interface BotArmyResult {
 
 export async function runBotArmy(opts: BotArmyOptions): Promise<BotArmyResult> {
   assertDevRoutes();
-  if (opts.reset !== false) resetDemo();
-  const event = primaryEvent();
+  if (opts.reset !== false) resetDemo({ eventId: opts.eventId });
+  const event = opts.eventId ? getEvent(opts.eventId)! : primaryEvent();
   const accounts = Math.max(1, Math.min(opts.accounts ?? 40, 200));
   const humans = Math.max(0, Math.min(opts.humans ?? 4, 40));
 
@@ -93,14 +100,16 @@ export async function runBotArmy(opts: BotArmyOptions): Promise<BotArmyResult> {
   // slow because a person takes a few hundred milliseconds to find and press the
   // button — which is the only difference this demo is about.
   const humanSessions = await Promise.all(
-    Array.from({ length: humans }, (_, i) => impersonate(opts.baseUrl, `${opts.label ?? 'human'}-${i + 1}`)),
+    Array.from({ length: humans }, (_, i) =>
+      impersonate(opts.baseUrl, `${opts.label ?? 'human'}-${i + 1}`, opts.eventId),
+    ),
   );
 
   const army = buildArmy({ accounts, humans: accounts });
   const botCookies: { continuityId: string; cookie: string }[] = [];
   await Promise.all(
     army.accounts.map(async (member) => {
-      const session = await impersonate(opts.baseUrl, member.handle);
+      const session = await impersonate(opts.baseUrl, member.handle, opts.eventId);
       botCookies.push({ continuityId: session.continuityId, cookie: session.cookie });
     }),
   );
@@ -113,7 +122,7 @@ export async function runBotArmy(opts: BotArmyOptions): Promise<BotArmyResult> {
       humanSessions.map(async (human, i) => {
         await sleep(180 + i * 120 + Math.random() * 150);
         try {
-          await join(opts.baseUrl, human.cookie);
+          await join(opts.baseUrl, human.cookie, opts.eventId);
           return true;
         } catch {
           return false;
@@ -124,7 +133,7 @@ export async function runBotArmy(opts: BotArmyOptions): Promise<BotArmyResult> {
     Promise.all(
       botCookies.map(async (bot) => {
         try {
-          await join(opts.baseUrl, bot.cookie);
+          await join(opts.baseUrl, bot.cookie, opts.eventId);
           return null;
         } catch (err) {
           return err instanceof Error ? err.message : String(err);
@@ -228,6 +237,8 @@ export async function runSpeedContrast(opts: {
   humans?: number;
   /** Slots for the comparison. More slots means less sampling noise. */
   slots?: number;
+  /** Which event to run against. Omitted, it is the seeded one. */
+  eventId?: string;
 }): Promise<{
   fcfs: BotArmyResult;
   lottery: BotArmyResult;
@@ -244,7 +255,7 @@ export async function runSpeedContrast(opts: {
   };
 }> {
   assertDevRoutes();
-  const event = primaryEvent();
+  const event = opts.eventId ? getEvent(opts.eventId)! : primaryEvent();
 
   // ── Choose a slot count that leaves real competition ──
   //
@@ -259,23 +270,23 @@ export async function runSpeedContrast(opts: {
   const clamped = slotCount !== requested;
 
   // ── Control group: first come, first served ──
-  resetDemo();
+  resetDemo({ eventId: event.id });
   updateEvent(event.id, { lottery_mode: 'fcfs', total_slots: slotCount });
   ensureSlots(event.id, slotCount);
-  const fcfs = await runBotArmy({ ...opts, label: 'human', reset: false });
+  const fcfs = await runBotArmy({ ...opts, label: 'human', reset: false, eventId: event.id });
 
   // ── The real thing: everyone in the window has equal odds ──
-  resetDemo();
+  resetDemo({ eventId: event.id });
   updateEvent(event.id, { lottery_mode: 'lottery', total_slots: slotCount });
   ensureSlots(event.id, slotCount);
-  const lottery = await runBotArmy({ ...opts, label: 'human', reset: false });
+  const lottery = await runBotArmy({ ...opts, label: 'human', reset: false, eventId: event.id });
 
   // Leave the event on the mode the demo wants to keep using, and back on the
   // capacity it was seeded with. `resetDemo` rebuilds the slot ROWS too —
   // restoring only `total_slots` would leave stray inventory behind and inflate
   // the event size for every later run.
   updateEvent(event.id, { lottery_mode: 'lottery', total_slots: originalSlots });
-  resetDemo();
+  resetDemo({ eventId: event.id });
 
   const p = lottery.shares.botEntrantShare;
   const k = lottery.allocated.bots + lottery.allocated.humans;
@@ -315,8 +326,12 @@ export async function runSpeedContrast(opts: {
 
 // ── HTTP helpers (deliberately real requests) ───────────────────────────────
 
-async function impersonate(baseUrl: string, handle: string): Promise<{ continuityId: string; cookie: string }> {
-  const res = await fetchOrigin(baseUrl, '/api/dev/impersonate', {
+async function impersonate(
+  baseUrl: string,
+  handle: string,
+  eventId?: string,
+): Promise<{ continuityId: string; cookie: string }> {
+  const res = await fetchOrigin(baseUrl, `/api/dev/impersonate${query(eventId)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ handle }),
@@ -329,12 +344,17 @@ async function impersonate(baseUrl: string, handle: string): Promise<{ continuit
   return { continuityId: body.continuityId, cookie };
 }
 
-async function join(baseUrl: string, cookie: string): Promise<void> {
-  const res = await fetchOrigin(baseUrl, '/api/queue/join', {
+async function join(baseUrl: string, cookie: string, eventId?: string): Promise<void> {
+  const res = await fetchOrigin(baseUrl, `/api/queue/join${query(eventId)}`, {
     method: 'POST',
     headers: { cookie, 'content-type': 'application/json' },
     body: '{}',
   });
   if (!res.ok) throw new Error(`join failed: ${res.status}`);
+}
+
+/** `?eventId=…` when there is one, empty otherwise. */
+function query(eventId?: string): string {
+  return eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
 }
 

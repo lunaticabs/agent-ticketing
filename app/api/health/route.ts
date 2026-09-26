@@ -1,7 +1,8 @@
 import { json, route } from '@/lib/api';
-import { getEvent, listEvents } from '@/lib/humans';
+import { getEvent, listEvents, seededEvent } from '@/lib/humans';
 import { idpStatus } from '@/worldid';
 import { devRoutesEnabled } from '@/lib/errors';
+import { sandboxStats } from '@/lib/sandbox';
 import {
   WORLDID_ENVIRONMENT,
   baseUrlConsistency,
@@ -16,8 +17,10 @@ import {
  * which IdP mode are we in, and are the demo bypass routes on?
  */
 export const GET = route(async () => {
-  const events = listEvents();
-  const event = events[0] ? getEvent(events[0].id) : undefined;
+  // The *seeded* event, not `listEvents()[0]`: once visitors have private events
+  // the newest row is whoever arrived last, and a health check that reports a
+  // stranger's sandbox as "the event" is worse than useless.
+  const event = seededEvent() ?? (listEvents()[0] ? getEvent(listEvents()[0].id) : undefined);
   const idp = await idpStatus(false);
 
   return json({
@@ -41,6 +44,12 @@ export const GET = route(async () => {
       problem: baseUrlConsistency().detail,
     },
     devRoutes: devRoutesEnabled(),
+    /**
+     * One private event per visitor. `enabled: false` means this deployment is
+     * the single shared stage demo, which is what every local run and the test
+     * suite are.
+     */
+    sandbox: sandboxStats(),
     event: event
       ? {
           id: event.id,

@@ -30,6 +30,15 @@ import { describeTarget, reportPreflight, PreflightError, requireDevRoutes, requ
 
 /** Resolved in `main`, once the server has been found. */
 let BASE = '';
+/**
+ * The event every check is about — the seeded one.
+ *
+ * Required as soon as the server runs with `ENABLE_SANDBOX=1`: a request that
+ * names no event is a new visitor and gets a private event of its own, so the
+ * agent's tool calls and this script's approval would be about two different
+ * queues. Pinned once, here, for the same reason `scripts/e2e.ts` pins it.
+ */
+let EVENT = '';
 
 interface Check {
   name: string;
@@ -57,6 +66,12 @@ function parse(result: unknown): Record<string, unknown> {
   }
 }
 
+/** The seeded event's id, read from the server rather than assumed. */
+async function seededEventId(): Promise<string> {
+  const health = await http<{ event?: { id: string } }>('/api/health');
+  return health.body.event?.id ?? '';
+}
+
 interface HttpOptions {
   method?: string;
   body?: unknown;
@@ -65,7 +80,8 @@ interface HttpOptions {
 }
 
 async function http<T>(path: string, opts: HttpOptions = {}): Promise<{ status: number; body: T; cookie: string }> {
-  const res = await fetch(`${BASE}${path}`, {
+  const pinned = EVENT ? (path.includes('?') ? `${path}&eventId=${encodeURIComponent(EVENT)}` : `${path}?eventId=${encodeURIComponent(EVENT)}`) : path;
+  const res = await fetch(`${BASE}${pinned}`, {
     method: opts.method ?? (opts.body ? 'POST' : 'GET'),
     headers: {
       ...(opts.body ? { 'content-type': 'application/json' } : {}),
@@ -107,7 +123,12 @@ async function connectMcp(token: string): Promise<Client> {
   const transport = new StdioClientTransport({
     command: 'npx',
     args: ['tsx', 'mcp/server.ts'],
-    env: { ...process.env, PRESENCE_BASE_URL: BASE, PRESENCE_AGENT_TOKEN: token } as Record<string, string>,
+    env: {
+      ...process.env,
+      PRESENCE_BASE_URL: BASE,
+      PRESENCE_AGENT_TOKEN: token,
+      ...(EVENT ? { PRESENCE_EVENT_ID: EVENT } : {}),
+    } as Record<string, string>,
     // The server logs to stderr by design; keep the check output clean.
     stderr: 'ignore',
   });
@@ -120,6 +141,7 @@ async function main(): Promise<number> {
   try {
     const target = await resolveTarget();
     BASE = target.base;
+    EVENT = await seededEventId();
     requireDevRoutes(target);
     requireLocalIdp(target, 'the MCP acceptance check');
 

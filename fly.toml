@@ -1,0 +1,84 @@
+# ============================================================================
+#  Fly.io — one always-on machine with a volume for SQLite
+# ============================================================================
+#
+# ── The three settings that are not defaults, and why ──────────────────────
+#
+#   auto_stop_machines = "off" + min_machines_running = 1
+#       The app is a stateful SQLite server with a 1-second board poll. A
+#       suspended machine means the first visitor after a quiet spell waits for
+#       a cold start, and a machine that stops between deploys makes the volume
+#       look empty to anyone watching. This demo is meant to be always up.
+#
+#   [[vm]] shared-cpu-1x / 512mb
+#       256MB is the cheapest size and is tight for Node plus the Next server
+#       bundle; 512MB is ~$3.19/mo (rising to ~$3.69/mo with the Oct 2026 price
+#       change) and removes a whole class of mysterious OOM restarts during a
+#       demo.
+#
+#   One machine, one region, one volume
+#       SQLite is a file. Two machines are two files, which is two divergent
+#       deployments of the same demo. `fly deploy` with a volume cannot use
+#       canary or bluegreen, so `strategy = "rolling"` is the only option that
+#       works — and the brief stop it causes is fine for a demo.
+#
+# `primary_region` also decides where `fly volumes create` puts the volume. The
+# two must match or the app starts with an empty filesystem and creates a second
+# database next to the first.
+primary_region = "nrt"
+
+app = "agent-ticket-demo"
+kill_signal = "SIGINT"
+kill_timeout = "5s"
+
+[build]
+dockerfile = "Dockerfile"
+
+[env]
+# The database lives on the volume, never in the image.
+PRESENCE_DB = "/data/presence.db"
+PORT = "3000"
+# Which IdP deployment to talk to. Not a secret, and pinned here so a deploy
+# cannot accidentally point at a different environment (RED LINE 4).
+WORLDID_ISSUER = "https://sandbox.auth.world.org"
+WORLDID_TOKEN_AUTH_METHOD = "client_secret_basic"
+# One private event per visitor, so the public site is many demos rather than one
+# shared queue. See lib/sandbox.ts.
+ENABLE_SANDBOX = "1"
+# The demo props on /admin (reset, bot army, the 40-account collapse, the agent
+# button). They are scoped to the caller's own private event, so one visitor
+# cannot disturb another's. Set to "0" for a participant-only site.
+ENABLE_DEV_ROUTES = "1"
+
+[http_service]
+internal_port = 3000
+force_https = true
+auto_stop_machines = "off"
+auto_start_machines = true
+min_machines_running = 1
+
+# Fly terminates TLS and forwards HTTP to internal_port. The app must therefore
+# build its public links from configuration and NOT from the incoming request's
+# scheme — see `worldid/config.ts`, where the redirect URI is authoritative.
+# Set at deploy time:
+#   fly secrets set PRESENCE_PUBLIC_URL=https://<app>.fly.dev \
+#                   WORLDID_REDIRECT_URI=https://<app>.fly.dev/api/auth/world/callback \
+#                   WORLDID_CLIENT_ID=... WORLDID_CLIENT_SECRET=... \
+#                   PRESENCE_SIGNING_KEY="$(openssl rand -base64 48)"
+
+[[mounts]]
+source = "presence_data"
+destination = "/data"
+initial_size = "1gb"
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "512mb"
+cpus = 1
+
+[deploy]
+# Volumes rule out canary and bluegreen: the new machine would need the same
+# volume attached to two machines at once.
+strategy = "rolling"
+# The container does its own seeding at startup (`instrumentation.ts`), because a
+# release command runs without the volume mounted.

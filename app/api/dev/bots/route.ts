@@ -2,6 +2,7 @@ import { json, route, readJson } from '@/lib/api';
 import { assertDevRoutes } from '@/lib/devmode';
 import { selfOrigin } from '@/lib/selfcall';
 import { runBotArmy, runSpeedContrast } from '@/lib/botarmy';
+import { resolveEventId } from '@/lib/sandbox';
 
 /**
  * T-6.3 — the speed-contrast demo behind a button.
@@ -23,13 +24,18 @@ export const POST = route(async (req) => {
   const accounts = typeof body.accounts === 'number' ? body.accounts : undefined;
   const humans = typeof body.humans === 'number' ? body.humans : undefined;
   const slots = typeof body.slots === 'number' ? body.slots : undefined;
+  // The army's joins are real HTTP requests back into this server, so the event
+  // has to be passed explicitly — the caller's request scope does not travel
+  // with them. Without this, a visitor's 40-account army would queue in the
+  // seeded stage event instead of their own.
+  const eventId = resolveEventId(req, typeof body.eventId === 'string' ? body.eventId : undefined);
 
   if (body.mode === 'compare') {
-    const result = await runSpeedContrast({ baseUrl, accounts, humans, slots });
+    const result = await runSpeedContrast({ baseUrl, accounts, humans, slots, eventId });
     return json({ ok: true, ...result });
   }
 
-  const result = await runBotArmy({ baseUrl, accounts, humans, label: 'human' });
+  const result = await runBotArmy({ baseUrl, accounts, humans, label: 'human', eventId });
   return json({
     ok: true,
     result,

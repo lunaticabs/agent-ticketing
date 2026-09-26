@@ -1,6 +1,7 @@
 import { json, route, readJson } from '@/lib/api';
 import { ensureHuman, touchFreshAuth } from '@/lib/humans';
 import { issueSession } from '@/lib/session';
+import { carrySandboxCookie } from '@/lib/sandboxcookie';
 import { audit } from '@/lib/audit';
 import * as worldid from '@/worldid';
 
@@ -82,6 +83,8 @@ export const POST = route(async (req) => {
       path: '/',
       maxAge: session.maxAge,
     });
+    // Keep the visitor on their own private event across sign-in.
+    carrySandboxCookie(req, response);
     return response;
   }
 

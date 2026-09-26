@@ -1,0 +1,48 @@
+# ============================================================================
+#  What does NOT go into the image
+# ============================================================================
+#
+# The two that matter are secrets and state:
+#
+#   `.env*`      — a laptop's `.env.local` holds the World ID client secret and
+#                  the signing key. Copying it in would put both in a layer and
+#                  make the image decide its own public URL.
+#   `*.db*`      — the local demo database. In the image it would ship one
+#                  deployment's queue state to the next one, and the volume is
+#                  where the database belongs anyway.
+#
+# `certificates/` is a private key for the local HTTPS dev server, and
+# `.test-db/` is the test suite's scratch space. Neither has any business in a
+# container that a platform builds and stores.
+.dockerignore
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+certificates/
+*.pem
+
+# Local state
+db/*.db
+db/*.db-wal
+db/*.db-shm
+.test-db/
+var/
+
+# Build output and caches — the image builds these itself, from source
+.next
+node_modules
+.npm-cache
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# Repository furniture
+.git
+.gitignore
+.github
+*.md
+!README.md
+.vscode
+.idea
+.DS_Store

@@ -3,6 +3,7 @@
  */
 import { getDb, nowMs } from './db';
 import { newId } from './ids';
+import { currentEventId } from './eventcontext';
 import { continuityIdFrom } from '../worldid/nullifier';
 
 export interface HumanRow {
@@ -76,6 +77,8 @@ export interface EventRow {
   lottery_drawn_at: number | null;
   lottery_seed: string | null;
   created_at: number;
+  /** 0 = the seeded stage event, 1 = a visitor's private event. See `lib/sandbox.ts`. */
+  sandbox: number;
 }
 
 export function getEvent(id: string): EventRow | undefined {
@@ -86,8 +89,56 @@ export function listEvents(): EventRow[] {
   return getDb().prepare(`SELECT * FROM event ORDER BY created_at DESC`).all() as EventRow[];
 }
 
-/** The demo has exactly one event; this keeps the UI from having to know its id. */
+/**
+ * The seeded stage event — `sandbox = 0`.
+ *
+ * Distinct from "the most recent event" on purpose. Once visitors are creating
+ * private events, `listEvents()[0]` is *their* event, and anything that means
+ * "the demo event" (the scripts, the MCP check, the runbook commands, the
+ * startup banner) would silently start operating on whoever visited last.
+ */
+export function seededEvent(): EventRow | undefined {
+  return getDb()
+    .prepare(`SELECT * FROM event WHERE sandbox = 0 ORDER BY created_at ASC LIMIT 1`)
+    .get() as EventRow | undefined;
+}
+
+/**
+ * The seeded event as a *template*, for copying.
+ *
+ * Same row as `seededEvent()`, named for the other question. `lib/sandbox.ts`
+ * copies a visitor's private event from it (same slots, same windows) so that a
+ * private demo behaves like the described one, and `lib/demo.ts` uses it to
+ * answer "has this database ever been seeded?".
+ */
+export function seedEventTemplate(): EventRow | undefined {
+  return seededEvent();
+}
+
+/**
+ * "The event in play" — resolved per request, not per process.
+ *
+ * On the stage this is literally the one seeded event and that is all it ever
+ * was. On the public site each visitor has their own, and `middleware.ts` puts
+ * the right one in an `AsyncLocalStorage` store before any handler runs, so the
+ * ~40 call sites that ask this question keep working unchanged while answering
+ * it per visitor. Outside a request — `npm run seed`, `npm run bots`, the test
+ * suite — there is no store and this falls back to the only event there is.
+ *
+ * A request store that names an event which has since been deleted (the
+ * sweeper, a database reset) falls through to the same fallback rather than
+ * throwing: a missing sandbox is a new visitor, not an error.
+ */
 export function primaryEvent(): EventRow {
+  const scoped = currentEventId();
+  if (scoped) {
+    const event = getEvent(scoped);
+    if (event) return event;
+  }
+  const seeded = seededEvent();
+  if (seeded) return seeded;
+  // Nothing seeded: fall back to whatever exists, so a half-configured
+  // database fails later with a specific message rather than here with none.
   const events = listEvents();
   if (!events.length) throw new Error('no event seeded — run `npm run seed`');
   return events[0];
