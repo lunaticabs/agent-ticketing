@@ -205,10 +205,44 @@ export default function AdminPage() {
             >
               Prime: 6 attendees join
             </Button>
+            {/*
+              ── One button, whichever countdown is running ──────────────
+              `deferAllocations: true` is what makes this cover the *approval*
+              window and not only the draw. It is the only way to end a human
+              authorization countdown on demand, and the runbook needs one: a
+              deferral is a beat, and a beat that requires standing still for
+              ninety seconds is not a beat.
+
+              Both halves travel together here, which is the opposite of the
+              default (`deferAllocations: false`) because the intent is opposite
+              too. Pressed while the draw is open, it settles it and then expires
+              every window that settling just created, so deferrals fire at once.
+              Pressed while a human is being asked to authorize, it ends that
+              countdown and the slot moves on — which is exactly what "the human
+              did not answer" looks like.
+
+              What it must not do is what it used to: settle a draw and destroy
+              the allocation in the same breath when the operator only meant to
+              skip the wait. Hence the flag, and hence it being explicit.
+            */}
             <Button
               disabled={busy !== null || !devRoutes}
-              onClick={() => run('fast-forward', () => call('/api/dev/fast-forward', { json: {} }))}
-              title="Settle the draw now and expire every live approval window"
+              onClick={() =>
+                run(
+                  'fast-forward',
+                  () =>
+                    call<{ drew: boolean; deferrals: number }>('/api/dev/fast-forward', {
+                      json: { deferAllocations: true },
+                    }),
+                  (r) =>
+                    log(
+                      r.drew
+                        ? `draw settled and every window collapsed — ${r.deferrals} deferral(s)`
+                        : `every live window collapsed — ${r.deferrals} deferral(s)`,
+                    ),
+                )
+              }
+              title="End whatever is counting down: settles an open draw, then expires every approval window so deferrals fire at once"
             >
               Fast-forward windows
             </Button>

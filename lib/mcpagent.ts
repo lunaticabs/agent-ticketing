@@ -427,11 +427,23 @@ async function run(
     if (decision !== 'APPROVED') {
       step(sessionId, {
         kind: 'error',
-        label: `the human did not approve (${decision.toLowerCase()})`,
-        detail: 'nothing was executed; the slot will defer',
+        label:
+          decision === 'SLOT_GONE'
+            ? 'the slot was released before the human answered'
+            : `the human did not approve (${decision.toLowerCase()})`,
+        detail:
+          decision === 'SLOT_GONE'
+            ? 'the approval window was ended or lapsed, so the slot moved on — there is nothing left to authorize'
+            : 'nothing was executed; the slot will defer',
         ok: false,
       });
-      finish(sessionId, decision === 'EXPIRED' ? 'failed' : 'cancelled', `authorization ${decision.toLowerCase()}`);
+      finish(
+        sessionId,
+        decision === 'DENIED' ? 'cancelled' : 'failed',
+        decision === 'SLOT_GONE'
+          ? 'the slot moved on before the human answered'
+          : `authorization ${decision.toLowerCase()}`,
+      );
       return;
     }
 
@@ -572,13 +584,30 @@ async function waitForAllocation(client: Client, sessionId: string): Promise<All
   return { kind: 'settled', reason: 'no slot arrived inside the wait budget' };
 }
 
+/**
+ * Wait for the human — and stop the moment their answer can no longer matter.
+ *
+ * Polling only the approval row was not enough. Ending the approval window (with
+ * Fast-forward, or by letting it lapse) releases the slot and leaves the
+ * approval row PENDING, so this waited the full two minutes on a question that
+ * had already been settled: measured at 44 seconds and still going, with
+ * `allocation: []` on the server the whole time. The slot was gone; no approval
+ * could have helped.
+ *
+ * So the loop watches two things. The approval row says what the human did; the
+ * queue status says whether there is still anything to authorize at all. Losing
+ * the slot is its own outcome, reported as `SLOT_GONE` rather than dressed up as
+ * an expiry — they are different things and the operator can see both.
+ */
+type Decision = 'APPROVED' | 'DENIED' | 'EXPIRED' | 'SLOT_GONE';
+
 async function waitForDecision(
   base: string,
   token: string,
   approvalId: string,
   sessionId: string,
   eventId: string | null,
-): Promise<'APPROVED' | 'DENIED' | 'EXPIRED'> {
+): Promise<Decision> {
   const deadline = Date.now() + HUMAN_WAIT_MS;
   let noted = false;
 
@@ -589,8 +618,17 @@ async function waitForDecision(
     });
     const state = String(view.state ?? 'PENDING');
     if (state === 'APPROVED' || state === 'DENIED' || state === 'EXPIRED') {
-      return state as 'APPROVED' | 'DENIED' | 'EXPIRED';
+      return state as Decision;
     }
+
+    // Still pending — but is there anything left to approve *for*?
+    const status = await fetchJson(`${base}/api/queue/status${eventQuery(eventId)}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (status.ok === true && Array.isArray(status.allocation) && status.allocation.length === 0) {
+      return 'SLOT_GONE';
+    }
+
     if (!noted && Date.now() > deadline - HUMAN_WAIT_MS + 20_000) {
       noted = true;
       step(sessionId, { kind: 'note', label: 'still waiting for the human' });
