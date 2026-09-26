@@ -36,6 +36,7 @@ export type ReasonCode =
   | 'approval_denied'
   | 'approval_identity_mismatch'
   | 'approval_already_consumed'
+  | 'approval_already_pending'
   | 'proof_replay_detected'
   | 'already_owns_entitlement'
   | 'verification_failed'
@@ -125,6 +126,7 @@ function defaultStatus(code: ReasonCode): number {
       return 404;
     case 'proof_replay_detected':
     case 'approval_already_consumed':
+    case 'approval_already_pending':
     case 'already_owns_entitlement':
     case 'slot_already_allocated_to_someone_else':
       return 409;

@@ -363,23 +363,28 @@ async function run(
       detail: 'the agent polls queue.status; the human is not involved yet',
     }, 'waiting_draw');
 
-    const allocation = await waitForAllocation(client, sessionId);
-    if (!allocation) {
-      // Distinguish "the draw never reached us" from "we gave up waiting".
-      const status = await callTool(client, 'queue.status', {});
-      finish(
-        sessionId,
-        'failed',
-        status.code === 'deferred_to_next_candidate'
-          ? 'the window closed and the slot moved on'
-          : 'no slot arrived inside the wait budget',
-      );
+    const outcome = await waitForAllocation(client, sessionId);
+    if (outcome.kind === 'settled') {
+      // Never a bare timeout when there is something specific to say: the whole
+      // point of this failure mode is that the reason is legible.
+      step(sessionId, { kind: 'error', label: 'the draw is closed', detail: outcome.reason, ok: false });
+      step(sessionId, {
+        kind: 'note',
+        label: 'ask for a new round',
+        detail: 'the window never reopens by itself — the board offers "start a new round"',
+      });
+      finish(sessionId, 'failed', outcome.reason);
+      return;
+    }
+    if (outcome.kind === 'waiting') {
+      // Unreachable: `waitForAllocation` folds its own timeout into `settled`.
+      finish(sessionId, 'failed', 'no slot arrived inside the wait budget');
       return;
     }
     step(sessionId, {
       kind: 'mcp',
       label: 'queue.status',
-      detail: `slot allocated: ${allocation.slotId} — ${Math.round(allocation.remainingMs / 1000)}s to answer`,
+      detail: `slot allocated: ${outcome.slotId} — ${Math.round(outcome.remainingMs / 1000)}s to answer`,
       ok: true,
     });
 
@@ -489,10 +494,68 @@ async function callTool(client: Client, name: string, args: Record<string, unkno
   return parsed;
 }
 
-async function waitForAllocation(
-  client: Client,
-  sessionId: string,
-): Promise<{ slotId: string; remainingMs: number } | null> {
+/**
+ * Wait for the draw to reach this human — or stop the moment it cannot.
+ *
+ * ── Why this does not simply poll until the deadline ───────────────────────
+ *
+ * It did, and the public demo found the hole: when the draw settles and this
+ * human is *not* allocated a slot, the window is closed for good. Nothing the
+ * agent polls can change that, so it spent the full ninety seconds asking a
+ * settled question, and the panel sat on "waiting for the draw" the whole time.
+ * A visitor reads that as a hang, which is exactly what was reported.
+ *
+ * The signal is `event.lotteryDrawn`, straight from `queue.status`: once the
+ * draw is settled the answer is final, so the wait ends on that poll. Three
+ * outcomes now, and each one is distinguishable to whoever is watching:
+ *
+ *   allocated   → carry on and ask the human
+ *   settled     → stop, and say why (the draw closed without reaching us)
+ *   deferred    → stop, the slot moved to the next candidate
+ *   timed out   → the only case that deserves the full budget: a window that is
+ *                 still open when the budget runs out
+ */
+export type AllocationOutcome =
+  | { kind: 'allocated'; slotId: string; remainingMs: number }
+  | { kind: 'settled'; reason: string }
+  | { kind: 'waiting' };
+
+/**
+ * Read one `queue.status` payload and decide whether waiting is still sensible.
+ *
+ * Split out from the polling loop so the decision can be tested directly. The
+ * bug it fixes was a *decision* bug — "the draw is settled and we have nothing,
+ * keep waiting" — and a decision that can only be exercised by running a
+ * ninety-second loop against a live server is a decision that will regress.
+ */
+export function allocationOutcome(status: Record<string, unknown>): AllocationOutcome {
+  if (Array.isArray(status.allocation) && status.allocation.length > 0) {
+    const first = status.allocation[0] as { slotId: string; remainingMs: number };
+    return { kind: 'allocated', slotId: first.slotId, remainingMs: first.remainingMs };
+  }
+
+  // A refusal from queue.status means the window closed under us.
+  if (status.ok === false && status.code === 'deferred_to_next_candidate') {
+    return { kind: 'settled', reason: 'the window closed and the slot moved to the next candidate' };
+  }
+
+  // The draw is settled and we are not in the allocation list. No future poll
+  // can change that — from here the queue refuses new entries — so this is an
+  // answer, not a reason to keep waiting.
+  const event = status.event as { lotteryDrawn?: boolean } | undefined;
+  if (event?.lotteryDrawn === true) {
+    return {
+      kind: 'settled',
+      reason:
+        'the draw was settled without allocating this human a slot — every slot went to an ' +
+        'earlier rank in the draw',
+    };
+  }
+
+  return { kind: 'waiting' };
+}
+
+async function waitForAllocation(client: Client, sessionId: string): Promise<AllocationOutcome> {
   const deadline = Date.now() + DRAW_WAIT_MS;
   let polls = 0;
 
@@ -501,16 +564,12 @@ async function waitForAllocation(
     const status = await callTool(client, 'queue.status', {});
     polls += 1;
 
-    if (Array.isArray(status.allocation) && status.allocation.length > 0) {
-      const first = status.allocation[0] as { slotId: string; remainingMs: number };
-      return first;
-    }
-    // A refusal from queue.status means the window closed under us.
-    if (!status.ok && status.code === 'deferred_to_next_candidate') return null;
+    const outcome = allocationOutcome(status as Record<string, unknown>);
+    if (outcome.kind !== 'waiting') return outcome;
   }
 
   step(sessionId, { kind: 'note', label: `gave up after ${polls} polls` });
-  return null;
+  return { kind: 'settled', reason: 'no slot arrived inside the wait budget' };
 }
 
 async function waitForDecision(

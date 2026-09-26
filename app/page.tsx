@@ -545,15 +545,35 @@ export default function ConsolePage() {
 
         {/* ── Allocation / authorization ───────────────────────────── */}
         <Card title="3 · slot handover" className="md:col-span-2">
-          {!status.data?.allocation?.length ? (
+          {!status.data?.allocation?.length && (
             <p className="text-sm text-[var(--color-muted)]">
               {status.data?.holding?.length
                 ? 'You already hold a confirmed slot.'
                 : 'No slot is allocated to you right now.'}
             </p>
-          ) : (
+          )}
+
+          {/*
+            ── Why this block is not nested inside the allocation branch ──────
+            It was: with no allocation, the button disappeared, and with it the
+            only way to reach a refusal. That is invisible on the stage — the
+            operator always has a slot when they press it — and wrong for a demo
+            whose entire point is showing *why* a purchase is refused:
+
+              · after a confirmed purchase there is no allocation and no open
+                approval, and the gate answers `already_owns_entitlement`
+                (one slot per human per event);
+              · after a missed window it answers `deferred_to_next_candidate`;
+              · after a settled draw it answers `no_slot_allocated`.
+
+            Every one of those is a beat in the runbook, and every one was
+            unreachable from the screen because the button that produces them
+            was hidden. So the button is offered whenever there is nothing
+            pending, and the server's refusal is what the room reads.
+          */}
+          {(status.data?.allocation?.length ?? 0) > 0 && (
             <div className="space-y-3">
-              {status.data.allocation.map((a) => (
+              {status.data!.allocation.map((a) => (
                 <div
                   key={a.slotId}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[color-mix(in_srgb,var(--color-live)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-live)_10%,transparent)] p-3"
@@ -595,6 +615,17 @@ export default function ConsolePage() {
               ))}
             </div>
           )}
+
+          {/* No allocation: the button is still the way to reach a refusal. */}
+          {(status.data?.allocation?.length ?? 0) === 0 &&
+            !approval &&
+            status.data?.queue?.joined && (
+              <div className="mt-3">
+                <Button tone="live" onClick={requestApproval} disabled={busy}>
+                  Ask me to authorize
+                </Button>
+              </div>
+            )}
 
           {approval && (
             <div className="mt-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] p-3">

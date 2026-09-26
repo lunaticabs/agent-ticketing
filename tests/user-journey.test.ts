@@ -1128,6 +1128,77 @@ test('journey · the admin panel refuses to pretend when dev routes are off', as
   }
 });
 
+test('journey · the purchase gate can be triggered repeatedly, each refusal its own', async () => {
+  // The hackathon demo needs the failure modes to be *reproducible on demand*:
+  // press authorize, read the refusal, press again. That only works if a refusal
+  // leaves the button where it was — and it did not, because a repeat used to
+  // stack a second PENDING approval, and the console renders `openApprovals[0]`.
+  // The screen then said "waiting for you to approve" no matter what you pressed,
+  // and every failure mode was hidden behind the first pending authorization.
+  resetNetwork();
+  stubSignedIn();
+
+  // The human holds a confirmed slot, so the gate refuses with
+  // `already_owns_entitlement` — the most interesting of the failure modes,
+  // because it is the anti-scalping rule refusing a *second* purchase.
+  stub(
+    '/api/queue/status',
+    statusPayload({
+      allocation: [],
+      holding: [{ slotId: 'slot_tokyo_night_1', state: 'CONFIRMED' }],
+    }),
+  );
+  // No allocation is exactly the state this test is about: the button used to be
+  // hidden here, which hid every refusal the button can produce.
+
+  let attempts = 0;
+  stub(
+    '/api/slot/request',
+    () => {
+      attempts += 1;
+      return {
+        ok: false,
+        code: 'already_owns_entitlement',
+        message: 'you already hold a confirmed slot',
+        details: { slotId: 'slot_tokyo_night_1' },
+      };
+    },
+    409,
+  );
+
+  const ConsolePage = (await import('../app/page')).default;
+  const screen = await render(ConsolePage);
+
+  try {
+    await screen.waitFor(
+      (s) => s.buttons().includes('Ask me to authorize'),
+      'the authorize button, with a confirmed slot already held',
+    );
+
+    // Three presses. Every one must reach the server, and every one must come
+    // back as a refusal the operator can read off the screen.
+    for (let press = 1; press <= 3; press += 1) {
+      await screen.click('Ask me to authorize');
+      await screen.waitFor(
+        (s) => s.text().includes('already_owns_entitlement') || s.text().includes('already hold'),
+        `refusal ${press} to be shown`,
+      );
+      assert.ok(
+        screen.buttons().includes('Ask me to authorize'),
+        `press ${press}: the button must still be offered, so the next failure mode is reachable`,
+      );
+      assert.ok(
+        !screen.text().includes('waiting for you to approve'),
+        `press ${press}: no authorization was started, so nothing may look pending`,
+      );
+    }
+
+    assert.equal(attempts, 3, 'each press must be a real request, not a cached refusal');
+  } finally {
+    await screen.unmount();
+  }
+});
+
 test('teardown', () => {
   teardown();
 });

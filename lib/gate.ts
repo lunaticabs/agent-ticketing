@@ -178,6 +178,26 @@ export function describeClaimTarget(eventId: string, continuityId: string): Clai
  * The freshness requirement is 0 seconds: `max_age=0`, "require this
  * transaction's own fresh World proof, even with an existing browser session".
  * That is T-3.2 in one parameter.
+ *
+ * ── One outstanding approval per human per slot ────────────────────────────
+ *
+ * Pressing the button again while an authorization is still outstanding used to
+ * mint a second one, and nothing stopped a third. That was invisible on the
+ * stage — the operator pressed once — and wrong in two ways on a public site:
+ *
+ *   · the console renders `openApprovals[0]`, so a stack of pending approvals
+ *     hides every refusal behind the first one. The failure modes this demo
+ *     exists to show became unreachable: whatever you pressed, the screen said
+ *     "waiting for you to approve".
+ *   · each outstanding approval is a live interaction at the IdP for the same
+ *     slot, and a stale one can be approved later and presented to the gate.
+ *
+ * So a repeat is refused with the approval's id rather than silently stacked,
+ * and stale pendings for the same slot are retired first — otherwise a window
+ * that expired between presses would leave its approval PENDING forever, and
+ * the next press would be refused on behalf of a request nobody can still
+ * answer. Refusing *before* the slot's deadline passes is safe; refusing after
+ * it would be a dead end, which is why the sweep runs first.
  */
 export async function requestClaimApproval(
   eventId: string,
@@ -185,6 +205,30 @@ export async function requestClaimApproval(
   requestedVia: 'human' | 'agent' = 'human',
 ): Promise<RequestApprovalResult & { target: ClaimTarget }> {
   const target = describeClaimTarget(eventId, continuityId);
+
+  sweepExpiredApprovals(eventId, continuityId, target.slotId);
+
+  const outstanding = pendingApprovalFor(eventId, continuityId, target.slotId);
+  if (outstanding) {
+    throw new PresenceError(
+      'approval_already_pending',
+      'you already have an outstanding authorization for this slot — answer it on your device, or wait for it to expire',
+      {
+        httpStatus: 409,
+        invariant:
+          'T-3.1 — one outstanding human authorization per slot; a second request would race the first',
+        details: {
+          approvalId: outstanding.id,
+          slotId: target.slotId,
+          expiresAt: outstanding.expires_at,
+          requestedVia: outstanding.requested_via,
+        },
+        hint:
+          'Approve or deny the request already on your phone. Starting a second one does not ' +
+          'make the first unnecessary — it only makes the screen show the older one.',
+      },
+    );
+  }
 
   const result = await requestApproval({
     kind: 'purchase',
@@ -201,6 +245,42 @@ export async function requestClaimApproval(
   });
 
   return { ...result, target };
+}
+
+/** The caller's live authorization for this slot, if there is one. */
+function pendingApprovalFor(
+  eventId: string,
+  continuityId: string,
+  slotId: string,
+): ApprovalRow | undefined {
+  return getDb()
+    .prepare(
+      `SELECT * FROM approval
+        WHERE event_id = ? AND continuity_id = ? AND slot_id = ? AND state = 'PENDING'
+          AND expires_at > ?
+        ORDER BY requested_at DESC LIMIT 1`,
+    )
+    .get(eventId, continuityId, slotId, nowMs()) as ApprovalRow | undefined;
+}
+
+/**
+ * Retire pendings whose window has passed.
+ *
+ * A no-op in the common case. It exists so that "one outstanding approval" can
+ * never become "no way to ask again": an approval left PENDING past its expiry
+ * is not something the human can answer, and without this the guard above would
+ * refuse every future attempt on its behalf.
+ */
+function sweepExpiredApprovals(eventId: string, continuityId: string, slotId: string): void {
+  getDb()
+    .prepare(
+      `UPDATE approval
+          SET state = 'EXPIRED', fail_reason = 'window closed before the human answered',
+              decided_at = ?
+        WHERE event_id = ? AND continuity_id = ? AND slot_id = ? AND state = 'PENDING'
+          AND expires_at <= ?`,
+    )
+    .run(nowMs(), eventId, continuityId, slotId, nowMs());
 }
 
 // ── Step 3: the gate itself ─────────────────────────────────────────────────
