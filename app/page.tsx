@@ -393,7 +393,7 @@ export default function ConsolePage() {
 
       <header className="flex flex-wrap items-center justify-between gap-3 py-4">
         <div>
-          <h1 className="text-3xl font-black tracking-tight">PRESENCE</h1>
+          <h1 className="text-3xl font-black tracking-tight">Agent Ticketing Demo</h1>
           <p className="text-sm text-[var(--color-muted)]">
             Your agent queues. When a slot arrives, a real human has to be there — or it moves on.
           </p>

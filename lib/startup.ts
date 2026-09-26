@@ -40,16 +40,34 @@ function privateEventsOn(): boolean {
   return process.env.ENABLE_SANDBOX === '1';
 }
 
+/**
+ * A one-line box whose width is computed from its contents.
+ *
+ * The previous version had the border characters and the trailing spaces typed
+ * out by hand. That survived exactly until the product was renamed: the new title
+ * is longer than the old one, so the right border drifted two columns past the
+ * line above it. Counting spaces is not a thing to do twice.
+ *
+ * A title longer than the minimum simply makes a wider box.
+ */
+function boxed(text: string, minInner = 62): string[] {
+  const inner = Math.max(minInner, text.length + 4);
+  return [
+    `  ┌${'─'.repeat(inner)}┐`,
+    `  │  ${text.padEnd(inner - 2)}│`,
+    `  └${'─'.repeat(inner)}┘`,
+  ];
+}
+
 export function printStartupBanner(): void {
   if (printed) return;
   printed = true;
 
   const mode = idpMode();
   const lines: string[] = [];
+  const title = 'Agent Ticketing Demo — agent queueing, fresh human authorization';
   lines.push('');
-  lines.push('  ┌────────────────────────────────────────────────────────────────────┐');
-  lines.push('  │  PRESENCE · agent queueing with fresh human authorization          │');
-  lines.push('  └────────────────────────────────────────────────────────────────────┘');
+  lines.push(...boxed(title));
   const baseUrl = publicBaseUrl();
   const urls = baseUrlConsistency();
 

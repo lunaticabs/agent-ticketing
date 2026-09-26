@@ -187,7 +187,7 @@ export default function BoardClient({ initial }: { initial: BoardState | null })
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-line)] px-6 py-4">
         <div className="flex items-baseline gap-4">
-          <h1 className="text-3xl font-black tracking-tight">PRESENCE</h1>
+          <h1 className="text-3xl font-black tracking-tight">Agent Ticketing Demo</h1>
           <span className="text-lg text-[var(--color-muted)]">{data.event.name}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
