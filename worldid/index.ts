@@ -495,10 +495,57 @@ export async function completeOidcCallback(
     });
     return { ok: true, requestId: row.id };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = explainOidcError(err);
     markFailed(row.id, 'FAILED', message);
     return { ok: false, error: message };
   }
+}
+
+/**
+ * Say what the IdP actually said.
+ *
+ * The first real sign-in on the public deployment failed with, in full:
+ *
+ *   server responded with an error in the response body
+ *
+ * which is `oauth4webapi`'s message for "the token endpoint returned 4xx JSON".
+ * It is an accurate sentence and a useless one: the interesting part — the
+ * `error` code the IdP chose — is one level up, in `ResponseBodyError.cause`,
+ * and nothing surfaced it. Diagnosing that took a database query and a read of
+ * the library's source, which is not a reasonable thing to ask of whoever is
+ * holding the phone.
+ *
+ * So: unwrap the cause chain and include the IdP's own error code, its
+ * description, and the HTTP status. Never the response body wholesale — a token
+ * response can carry tokens, and this string is rendered in a URL.
+ *
+ * Written generically rather than against `ResponseBodyError` so an error shape
+ * from a future library version still yields something better than nothing.
+ */
+export function explainOidcError(err: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+
+  let node: unknown = err;
+  for (let depth = 0; depth < 3 && node && typeof node === 'object' && !seen.has(node); depth += 1) {
+    seen.add(node);
+    const record = node as Record<string, unknown>;
+
+    if (typeof record.error === 'string' && record.error) {
+      const description =
+        typeof record.error_description === 'string' ? ` (${record.error_description})` : '';
+      parts.push(`${record.error}${description}`);
+    } else if (node instanceof Error && node.message && !parts.includes(node.message)) {
+      parts.push(node.message);
+    }
+
+    const response = record.response as { status?: number } | undefined;
+    if (typeof response?.status === 'number') parts.push(`HTTP ${response.status}`);
+
+    node = record.cause;
+  }
+
+  return parts.length ? [...new Set(parts)].join(' · ') : String(err);
 }
 
 /**
