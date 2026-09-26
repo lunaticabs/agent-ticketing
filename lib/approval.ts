@@ -300,15 +300,80 @@ function markExpired(row: ApprovalRow, reason: string): void {
   });
 }
 
-/** Convenience for the UI: "what am I being asked to approve right now". */
+/**
+ * Convenience for the UI: "what am I being asked to approve right now".
+ *
+ * ── Why this is not simply "every PENDING row for this human" ───────────────
+ *
+ * It was, and that produced two different truths about one slot. When an
+ * approval window lapses — or is ended with Fast-forward — the slot is released
+ * and deferred, but the approval row stays PENDING. The participant console then
+ * went on rendering "your slot" and its countdown from that row while the board
+ * showed the slot back in the pool. Reported as "the page still says we got the
+ * ticket but the board says the slot is available", and the page was the one
+ * telling the truth it had been given.
+ *
+ * So an approval is only *open* while the thing it authorizes is still there to
+ * take. A row whose slot has been released, or handed to somebody else, is
+ * retired rather than returned — and retiring it is what lets the human ask
+ * again, since one outstanding approval per slot is the rule.
+ *
+ * What survives: a pending approval for a slot this human still holds, an
+ * approved one that has not been executed yet, and any approval whose slot is
+ * CONFIRMED (already theirs — history, not a pending question).
+ */
 export function openApprovalsFor(continuityId: string): ApprovalRow[] {
-  return getDb()
+  const rows = getDb()
     .prepare(
-      `SELECT * FROM approval
-        WHERE continuity_id = ? AND state IN ('PENDING','APPROVED')
-        ORDER BY requested_at DESC`,
+      `SELECT a.*,
+              (SELECT s.state FROM slot s WHERE s.id = a.slot_id)             AS slot_state,
+              (SELECT s.holder_continuity_id FROM slot s WHERE s.id = a.slot_id) AS slot_holder
+         FROM approval a
+        WHERE a.continuity_id = ? AND a.state IN ('PENDING','APPROVED')
+        ORDER BY a.requested_at DESC`,
     )
-    .all(continuityId) as ApprovalRow[];
+    .all(continuityId) as (ApprovalRow & { slot_state: string | null; slot_holder: string | null })[];
+
+  const live: ApprovalRow[] = [];
+  const retired: string[] = [];
+
+  for (const row of rows) {
+    // No slot attached (a `link` approval, say): nothing to lose, keep it.
+    if (!row.slot_id) {
+      live.push(row);
+      continue;
+    }
+    // The slot is this human's, and still theirs to take.
+    const stillTheirs =
+      row.slot_state === 'ALLOCATED' && row.slot_holder === row.continuity_id;
+    // Or it is already theirs for good: a fact to report, not a question.
+    const alreadyTheirs = row.slot_state === 'CONFIRMED' && row.slot_holder === row.continuity_id;
+
+    if (stillTheirs || alreadyTheirs) live.push(row);
+    else retired.push(row.id);
+  }
+
+  if (retired.length) {
+    const now = nowMs();
+    const mark = getDb().prepare(
+      `UPDATE approval SET state = 'EXPIRED', fail_reason = ?, decided_at = ?
+        WHERE id = ? AND state IN ('PENDING','APPROVED')`,
+    );
+    for (const id of retired) {
+      mark.run('the slot was released before this was answered', now, id);
+      audit({
+        type: 'approval.retired',
+        continuityId,
+        severity: 'info',
+        payload: {
+          approvalId: id,
+          note: 'the slot it authorized has moved on; the authorization is no longer open',
+        },
+      });
+    }
+  }
+
+  return live;
 }
 
 export interface OpenApprovalView {

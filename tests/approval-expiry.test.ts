@@ -14,6 +14,19 @@ import assert from 'node:assert/strict';
 import { freshEvent, getDb, human, reset } from './harness';
 import { joinQueue, settleLottery } from '../lib/queue';
 import { ensureSlots, listSlots, sweep } from '../lib/slots';
+import { openApprovalViews } from '../lib/approval';
+import { requestClaimApproval } from '../lib/gate';
+import { PresenceError } from '../lib/errors';
+
+async function refuses(code: string, fn: () => unknown | Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    assert.equal((err as PresenceError).code, code, `expected refusal "${code}"`);
+    return;
+  }
+  assert.fail(`expected a refusal with code "${code}", but the call succeeded`);
+}
 
 function slotRow(eventId: string, slotId: string) {
   return getDb().prepare(`SELECT * FROM slot WHERE id = ?`).get(slotId) as {
@@ -84,4 +97,86 @@ test('X-2 — when the window lapses, the holder loses it and the next candidate
     firstHolder === alice ? bob : alice,
     'the other candidate must have been handed it',
   );
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  The console and the board must not disagree about the same slot
+// ════════════════════════════════════════════════════════════════════════════
+
+test('X-3 — an authorization stops being "open" when its slot is released', async () => {
+  // Reported as a pure front-end problem, and it was: the participant console
+  // went on showing "your slot" with a live countdown while the board showed the
+  // slot back in the pool. The console was reading an approval row that stayed
+  // PENDING after its slot had been deferred away, so one slot had two truths.
+  reset();
+  const event = freshEvent({ slots: 1, approvalWindowSec: 60 });
+  const alice = human('x-open-alice');
+  joinQueue(event.id, alice);
+  settleLottery(event.id);
+  sweep(event.id);
+
+  const slotId = listSlots(event.id)[0].id;
+  const requested = await requestClaimApproval(event.id, alice);
+  assert.equal(requested.target.slotId, slotId, 'the authorization is bound to the allocated slot');
+
+  const open = await openApprovalViews(alice);
+  assert.equal(open.length, 1, 'while the slot is held, the question is open');
+  assert.equal(open[0].state, 'PENDING');
+
+  // The window lapses: the slot is released and deferred.
+  getDb().prepare(`UPDATE slot SET approval_deadline = ? WHERE id = ?`).run(Date.now() - 1000, slotId);
+  sweep(event.id);
+  assert.notEqual(slotRow(event.id, slotId).holder_continuity_id, alice, 'the slot moved on');
+
+  const after = await openApprovalViews(alice);
+  assert.equal(
+    after.length,
+    0,
+    'the console must not keep rendering a slot the board has already released',
+  );
+
+  const retired = getDb()
+    .prepare(`SELECT state, fail_reason FROM approval WHERE id = ?`)
+    .get(requested.approvalId) as { state: string; fail_reason: string | null };
+  assert.equal(retired.state, 'EXPIRED', 'and the stale row is retired, not left PENDING forever');
+  assert.match(String(retired.fail_reason), /slot was released/);
+});
+
+test('X-4 — a retirement does not block the human from asking again', async () => {
+  // Retiring matters for more than tidiness: one outstanding approval per slot is
+  // the rule, so a row left PENDING for a slot that no longer exists would refuse
+  // every future attempt on behalf of a question nobody can answer.
+  reset();
+  const event = freshEvent({ slots: 1, approvalWindowSec: 60 });
+  const alice = human('x-again-alice');
+  joinQueue(event.id, alice);
+  settleLottery(event.id);
+  sweep(event.id);
+
+  const slotId = listSlots(event.id)[0].id;
+  await requestClaimApproval(event.id, alice);
+  getDb().prepare(`UPDATE slot SET approval_deadline = ? WHERE id = ?`).run(Date.now() - 1000, slotId);
+  sweep(event.id);
+  await openApprovalViews(alice);
+
+  // She is not a candidate any more — `allocated_at` marks her served, which is
+  // the rule that stops one person being handed the same slot twice. So asking
+  // again refuses for a *different*, and correct, reason:
+  await refuses('deferred_to_next_candidate', () => requestClaimApproval(event.id, alice));
+
+  // The point of retiring the row: the queue is hers to re-enter, and a fresh
+  // authorization is issuable then. A stale PENDING row for a slot that no longer
+  // exists would have refused this on behalf of a question nobody could answer.
+  getDb().prepare(`DELETE FROM queue_entry WHERE event_id = ? AND continuity_id = ?`).run(event.id, alice);
+  // A settled draw refuses new entries — that rule is the whole point of the
+  // window — so reopening it is the honest way back in.
+  getDb().prepare(`UPDATE event SET lottery_drawn_at = NULL WHERE id = ?`).run(event.id);
+  joinQueue(event.id, alice);
+  settleLottery(event.id);
+  sweep(event.id);
+  ensureSlots(event.id, 1);
+  sweep(event.id);
+
+  const again = await requestClaimApproval(event.id, alice);
+  assert.ok(again.approvalId, 'a fresh authorization must be issuable');
 });
