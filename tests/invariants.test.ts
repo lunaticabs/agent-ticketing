@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  Security invariants — TODO §6, all ten of them
+ *  Security invariants — plan §6, all ten of them
  * ============================================================================
  *
  * Each test names the red line it protects and explains, in the assertion

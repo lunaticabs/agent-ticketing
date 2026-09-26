@@ -1,17 +1,18 @@
 #!/usr/bin/env tsx
 /**
  * ============================================================================
- *  Day-0 spike, executable (TODO §2)
+ *  Day-0 spike, executable (plan §2)
  * ============================================================================
  *
  *   npm run spike
  *
- * Every S-item in the TODO is a factual question about the sandbox IdP. Rather
- * than reading the docs and writing down what they claim, this script asks the
- * live deployment and prints the answers. The output is the evidence column of
- * SPIKE_NOTES.md, and it can be re-run before a demo to confirm nothing moved.
+ * Every S-item in the plan (`docs/plans/implementation-plan.md`) is a factual
+ * question about the sandbox IdP. Rather than reading the docs and writing down
+ * what they claim, this script asks the live deployment and prints the answers.
+ * The output is the evidence column of `docs/SPIKE_NOTES.md`, and it can be
+ * re-run before a demo to confirm nothing moved.
  *
- * The most interesting result is S-7. The TODO assumes a World-ID-style *verify
+ * The most interesting result is S-7. The plan assumes a World-ID-style *verify
  * endpoint* that returns a nullifier. The human-continuity IdP does not expose
  * one: it is plain OIDC, and the ID token carries `iss, sub, jti, auth_time,
  * acr, amr` and nothing that resembles an action-scoped nullifier. That single
@@ -145,7 +146,7 @@ const checks: Check[] = [
           '       nullifier = sha256(domain | issuer | sub | action | signal)',
           '   plus a second database constraint UNIQUE (bound_action, continuity_id).',
           '   Same observable behaviour: same human + same action => one success, ever.',
-          '   See worldid/nullifier.ts and SPIKE_NOTES.md S-7.',
+          '   See worldid/nullifier.ts and docs/SPIKE_NOTES.md S-7.',
         ].join('\n                '),
         fallback: 'n/a — this is the finding, not a failure.',
       };

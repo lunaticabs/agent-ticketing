@@ -6,7 +6,7 @@
  * This module exists for exactly one reason, and it is disclosed everywhere:
  * **registering an OIDC client on the sandbox portal requires a human with a
  * Google account** (`sandbox.auth.world.org/portal`). Until that human has
- * clicked through, the project cannot mint real World ID ID tokens. The TODO
+ * clicked through, the project cannot mint real World ID ID tokens. The plan
  * authorises this explicitly:
  *
  *   "验不过的 fallback" / "若 sandbox 不支持，降级为本地签名 token + 文档说明"

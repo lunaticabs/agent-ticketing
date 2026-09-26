@@ -2,6 +2,8 @@
 
 > **Task**: T-7.1 · **Produced by**: `npm run e2e` (live HTTP) and `npm test` (in-process)
 > **Track requirement 3**: *"演示失败路径：拒绝 / 过期 / 取消时，受保护动作不发生"*
+> — "demonstrate the failure paths: on refusal, expiry or cancellation, the
+> protected action does not happen".
 
 Every row below was **executed**, not reasoned about. The `verify` column is a
 database read taken after the refusal, because "it returned an error" and "the

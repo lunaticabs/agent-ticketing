@@ -164,7 +164,7 @@ Read four fields:
 Then walk the participant loop once on a real phone, because no automated check
 can: open the site, sign in with World ID, join the queue, wait for the draw,
 press **Ask me to authorize**, approve in the World App, and watch the handover
-complete. `RUN_DEMO.md` describes what each step should say.
+complete. [`RUN_DEMO.md`](RUN_DEMO.md) describes what each step should say.
 
 ---
 

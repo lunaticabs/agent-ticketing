@@ -40,8 +40,8 @@
  * guarantee survives even if someone later changes how the hash is built.
  *
  * This difference between the IDKit contract and the OIDC contract is recorded
- * in SPIKE_NOTES.md (S-7) and INTEGRATION_DEBRIEF.md. It is the single most
- * important integration finding of the project.
+ * in `docs/SPIKE_NOTES.md` (S-7) and `docs/INTEGRATION_DEBRIEF.md`. It is the
+ * single most important integration finding of the project.
  */
 
 import { sha256Hex } from '../lib/ids';

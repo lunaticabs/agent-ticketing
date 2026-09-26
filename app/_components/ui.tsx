@@ -303,7 +303,7 @@ export function DegradedBanner({ mode }: { mode: string }) {
       <strong>LOCAL IDP FALLBACK.</strong> No portal-issued OIDC credentials, so identity is
       simulated by <code className="mono">worldid/local.ts</code>. Every authorization check is
       still real: binding, freshness, one-time consumption. See{' '}
-      <code className="mono">SPIKE_NOTES.md</code> (S-2).
+      <code className="mono">docs/SPIKE_NOTES.md</code> (S-2).
     </div>
   );
 }

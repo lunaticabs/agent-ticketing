@@ -7,7 +7,7 @@
  * ids". That cannot be built from real World ID proofs: you cannot summon 40
  * verified humans onto a stage.
  *
- * So this module manufactures them. That is normal for a demo, and the TODO is
+ * So this module manufactures them. That is normal for a demo, and the plan is
  * explicit that the right move is to disclose it rather than hide it:
  *
  *   "demo 里模拟多个用户是行业惯例，说明白就没有问题；藏起来才是问题。"
@@ -22,7 +22,7 @@
  *      impersonated session can never produce an approval.
  *   3. Startup prints a loud warning when the flag is on (`lib/startup.ts`), and
  *      the board renders a permanent "DEV ROUTES ENABLED" badge.
- *   4. It is documented in README.md and INTEGRATION_DEBRIEF.md.
+ *   4. It is documented in README.md and docs/INTEGRATION_DEBRIEF.md.
  *
  * The tail of this file implements the laundering simulation used for demo beat
  * 4. Its whole purpose is to show the same attack failing for the same reason

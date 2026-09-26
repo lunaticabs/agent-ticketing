@@ -8,7 +8,7 @@
  * every source file outside this directory for the issuer host, the authorize /
  * token / device endpoints, and `openid-client`.
  *
- * Public API (mirrors the TODO's suggested interface):
+ * Public API (mirrors the plan's suggested interface):
  *
  *   startFreshAuth({ action, signal, continuityId? }) -> { url | deviceCode, requestId }
  *   awaitAuthResult(requestId)                        -> { ok, continuityId, nullifier, authTime, proofRef }

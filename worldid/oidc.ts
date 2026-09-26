@@ -3,7 +3,8 @@
  *
  * Nothing outside `worldid/` imports `openid-client`. That is deliberate: the
  * sandbox endpoints have already changed shape once during this build (see
- * SPIKE_NOTES.md), and when they change again there is exactly one file to fix.
+ * `docs/SPIKE_NOTES.md`), and when they change again there is exactly one file
+ * to fix.
  */
 import * as oidc from 'openid-client';
 import {

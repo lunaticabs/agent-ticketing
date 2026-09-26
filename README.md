@@ -26,7 +26,7 @@ an agent assistant to buy a ticket online. The project has two parts.
 2. **A simulated ticketing system** — the thing it buys from.
 
 The 2-minute demo video script built from this framing is in
-[`DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md).
+[`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md).
 
 ---
 
@@ -103,7 +103,7 @@ Proceed*. Nothing in the OIDC flow needs it to be trusted. Override with
 > links, the OIDC `redirect_uri` — must share an origin. The
 > redirect URI is authoritative: when `PRESENCE_PUBLIC_URL` is unset the origin
 > is derived from it. If you set both and they disagree, startup says so, and
-> `GET /api/health` reports it under `urls`. See SPIKE_NOTES.md S-0.
+> `GET /api/health` reports it under `urls`. See docs/SPIKE_NOTES.md S-0.
 
 | Command | What it does |
 |---|---|
@@ -163,7 +163,7 @@ http or https, and check their own preconditions before running.
 > every self-driven prop with `fetch failed`. They complete
 the consent screen programmatically, so they need the fallback IdP — with a real
 client registered, start the server with `PRESENCE_IDP_MODE=local` to verify
-against the fallback without unregistering anything. See RUN_DEMO.md.
+against the fallback without unregistering anything. See docs/RUN_DEMO.md.
 
 ---
 
@@ -192,7 +192,7 @@ either is violated:
 
 ### The finding that shaped the design
 
-The TODO assumed a World-ID-style verify endpoint that returns a nullifier.
+The original plan assumed a World-ID-style verify endpoint that returns a nullifier.
 **There isn't one.** The Human Continuity IdP is a plain OIDC provider: the ID
 token carries `iss, sub, aud, exp, iat, jti, nonce, auth_time, acr, amr`, and
 nothing resembling `nullifier`, `proof`, or `verification_level`.
@@ -212,8 +212,8 @@ nullifier = sha256("presence/v1/nullifier" | issuer | sub | action | signal)
 ```
 
 plus `UNIQUE (bound_action, continuity_id)` in the database. Same observable
-behaviour. The full reasoning is in `worldid/nullifier.ts`, `SPIKE_NOTES.md` (S-7)
-and `INTEGRATION_DEBRIEF.md`.
+behaviour. The full reasoning is in `worldid/nullifier.ts`, `docs/SPIKE_NOTES.md`
+(S-7) and `docs/INTEGRATION_DEBRIEF.md`.
 
 ---
 
@@ -345,8 +345,8 @@ countdown, the deferrals and the refusals-with-reasons are all on screen.
 first person to settle the draw closes the queue for everybody after them. That
 is correct for a projector and wrong for a URL you hand out.
 
-`DEPLOY.md` covers the public deployment end to end — the container, the volume,
-the OIDC registration, and the two environment variables that change the
+`docs/DEPLOY.md` covers the public deployment end to end — the container, the
+volume, the OIDC registration, and the two environment variables that change the
 behaviour:
 
 * **`ENABLE_SANDBOX=1`** gives each visitor their own event: their own slots,
@@ -383,17 +383,25 @@ saying out loud: identities start over on the new hostname.
   re-enrolment.** The IdP's own guide notes that a new World identity can resolve
   to a new IdP account, and World ID cannot distinguish a fan from a mercenary.
 * **The primary allocation stage is not linked to the purchase in this build** —
-  see `INTEGRATION_DEBRIEF.md` for what that would take and why it was left out.
+  see `docs/INTEGRATION_DEBRIEF.md` for what that would take and why it was left out.
 
 ## Documentation
 
+Everything else lives in [`docs/`](docs/) — this README is the only Markdown file
+at the repository root. Start at [`docs/README.md`](docs/README.md) for a reading
+order.
+
 | File | What it is |
 |---|---|
-| [`DEPLOY.md`](DEPLOY.md) | deploying to a public URL: container, volume, OIDC registration, verification |
-| [`SPIKE_NOTES.md`](SPIKE_NOTES.md) | every assumption, checked against the live sandbox, with evidence |
-| [`FAILURE_MATRIX.md`](FAILURE_MATRIX.md) | 45 refusal scenarios and how each was verified |
-| [`INTEGRATION_DEBRIEF.md`](INTEGRATION_DEBRIEF.md) | the track's required integration retrospective |
-| [`RUN_DEMO.md`](RUN_DEMO.md) | the five-minute runbook for the six beats, with the narration |
-| [`DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md) | the English script for the 2-minute demo video |
-| [`agent-ticketing-concept.md`](agent-ticketing-concept.md) | why the design is shaped this way |
-| [`agent-ticketing-todo.md`](agent-ticketing-todo.md) | the build plan this implements |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | deploying to a public URL: container, volume, OIDC registration, verification |
+| [`docs/SPIKE_NOTES.md`](docs/SPIKE_NOTES.md) | every assumption, checked against the live sandbox, with evidence |
+| [`docs/FAILURE_MATRIX.md`](docs/FAILURE_MATRIX.md) | 45 refusal scenarios and how each was verified |
+| [`docs/INTEGRATION_DEBRIEF.md`](docs/INTEGRATION_DEBRIEF.md) | the track's required integration retrospective |
+| [`docs/RUN_DEMO.md`](docs/RUN_DEMO.md) | the five-minute runbook for the six beats, with the narration |
+| [`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md) | the English script for the 2-minute demo video |
+| [`docs/plans/concept.md`](docs/plans/concept.md) | *process record*: the original design plan — why the design is shaped this way |
+| [`docs/plans/implementation-plan.md`](docs/plans/implementation-plan.md) | *process record*: the original build plan this implements |
+
+The two files under `docs/plans/` are historical: they were written (in Chinese)
+before the build started and were translated to English when the documentation was
+reorganised. Where they disagree with the delivered code, the code wins.

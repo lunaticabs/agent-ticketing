@@ -120,7 +120,7 @@ most dangerous misunderstanding in this track.
 
 ### 2.3 🟠 Two unrelated systems both called "sandbox"
 
-The TODO warned about this and it is real. `environment: "sandbox"` in IDKit and
+The plan warned about this and it is real. `environment: "sandbox"` in IDKit and
 `sandbox.auth.world.org` share a word and nothing else — different products,
 different docs, different capabilities. The first has no continuity, no fresh
 auth, and no OAuth surface.
@@ -151,7 +151,8 @@ and staging" clause is describing *other* deployments, not this one.
 app name, the optional logo URL, or the authentication method — none of which are
 the problem. The authentication-method field also warns *"This cannot be changed
 later"*, which raises the stakes on guessing. Our team spent a round trip on this
-after having already written in `SPIKE_NOTES.md` that HTTP loopback was fine.
+after having already written in [`SPIKE_NOTES.md`](SPIKE_NOTES.md) that HTTP
+loopback was fine.
 
 **Suggested fix**: either accept loopback HTTP on this environment as the guide
 implies, or make the validation error name the field — *"Redirect URIs must use
@@ -207,7 +208,7 @@ as it did:
 * **`max_age=0` and `prompt=login` are implemented properly.** Not "documented
   but unshipped" — they work as described. RFC 9470 step-up is genuinely
   available here, which is more than many production IdPs can say.
-* **The device authorization grant is available on the OIDC surface.** The TODO
+* **The device authorization grant is available on the OIDC surface.** The plan
   told us not to assume this. It is there, correctly advertised, with the
   `authorization_pending` / `slow_down` / `Retry-After` semantics you would hope
   for. A headless agent can authenticate for real, with no fallback.
@@ -432,5 +433,5 @@ npm run mcp-check      # the MCP surface, including claim-without-approval
 npm run build && npm run security-check
 ```
 
-`SPIKE_NOTES.md` carries the evidence column for every claim in §2, including the
-raw discovery document and the exact guide quotations.
+[`SPIKE_NOTES.md`](SPIKE_NOTES.md) carries the evidence column for every claim in
+§2, including the raw discovery document and the exact guide quotations.

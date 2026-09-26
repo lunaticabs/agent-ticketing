@@ -101,7 +101,7 @@ export function printStartupBanner(): void {
     lines.push('  ⚠️  REAL IDP CREDENTIALS, BUT THE PUBLIC BASE URL IS http://');
     lines.push('      The sandbox portal only accepts https callbacks, so the browser');
     lines.push('      will be redirected to a scheme this server is not serving.');
-    lines.push('      Run `npm run dev:https` instead. See SPIKE_NOTES.md S-0.');
+    lines.push('      Run `npm run dev:https` instead. See docs/SPIKE_NOTES.md S-0.');
     lines.push('');
   }
 
@@ -112,7 +112,7 @@ export function printStartupBanner(): void {
     lines.push('      binding, freshness, one-time consumption. But an assertion carries no');
     lines.push('      World ID proof of humanness, and the UI says so on every screen.');
     lines.push('      To use the real sandbox IdP, set WORLDID_CLIENT_ID and');
-    lines.push('      WORLDID_CLIENT_SECRET in .env.local. See SPIKE_NOTES.md (S-2).');
+    lines.push('      WORLDID_CLIENT_SECRET in .env.local. See docs/SPIKE_NOTES.md (S-2).');
     lines.push('');
   }
 

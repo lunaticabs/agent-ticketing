@@ -31,8 +31,8 @@
  * ── On the protocol layer ──────────────────────────────────────────────────
  *
  * `@modelcontextprotocol/sdk` handles JSON-RPC, capabilities and stdio. Nothing
- * here hand-rolls framing. The TODO is explicit: "用官方 MCP TypeScript SDK,
- * 不要手搓 JSON-RPC".
+ * here hand-rolls framing. The plan is explicit: "use the official MCP TypeScript
+ * SDK, don't hand-roll JSON-RPC".
  *
  * ── On authorization ───────────────────────────────────────────────────────
  *
@@ -43,7 +43,7 @@
  * implement MCP authorization." So this server authenticates callers with the
  * relying party's own scoped credential (T-5.2), which is exactly what the
  * `oidc` guide says the RP must do — "your backend issues the agent's
- * credential". See SPIKE_NOTES.md S-11.
+ * credential". See docs/SPIKE_NOTES.md S-11.
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
