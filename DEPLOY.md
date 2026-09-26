@@ -252,6 +252,7 @@ change. This schema has none.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| Build fails: `gyp ERR! find Python` under `/app/node_modules/better-sqlite3` | `better-sqlite3` ships prebuilds, but none matched this Node ABI, so npm fell back to `node-gyp` — and the slim image has no toolchain | Already handled: the Dockerfile installs `python3 make g++` in both build stages. This happened on the first real deploy, which is why the toolchain is there rather than assumed unnecessary. |
 | `/api/health` says `idp.mode: "local"` | Client credentials not set, or set without `WORLDID_REDIRECT_URI` | Step 2. The screens also say so out loud. |
 | Sign-in comes back `invalid_request` at the IdP | `redirect_uri` differs from the registration by so much as a trailing slash | Compare `/api/health`'s `urls.redirectUri` with the portal, character by character. |
 | Every visitor sees the same queue | `ENABLE_SANDBOX` is not `1` | `fly.toml`, then redeploy. Check `sandbox.enabled` in `/api/health`. |
