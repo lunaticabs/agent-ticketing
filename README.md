@@ -12,6 +12,24 @@ A queueing and slot-circulation system for events, built for the World
 
 ---
 
+## Overview
+
+As technology breaks through, AI activity online will grow sharply within a
+foreseeable two to three years — and the question of **who is answerable for what
+an AI does** comes to the fore with it.
+
+This demo shows how World ID grants legitimacy to an action: one real person uses
+an agent assistant to buy a ticket online. The project has two parts.
+
+1. **The harness gives the agent the ability to buy tickets.** That capability is
+   implemented as an MCP server.
+2. **A simulated ticketing system** — the thing it buys from.
+
+The 2-minute demo video script built from this framing is in
+[`DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md).
+
+---
+
 ## The 30-second version
 
 ```
@@ -376,5 +394,6 @@ saying out loud: identities start over on the new hostname.
 | [`FAILURE_MATRIX.md`](FAILURE_MATRIX.md) | 45 refusal scenarios and how each was verified |
 | [`INTEGRATION_DEBRIEF.md`](INTEGRATION_DEBRIEF.md) | the track's required integration retrospective |
 | [`RUN_DEMO.md`](RUN_DEMO.md) | the five-minute runbook for the six beats, with the narration |
+| [`DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md) | the English script for the 2-minute demo video |
 | [`agent-ticketing-concept.md`](agent-ticketing-concept.md) | why the design is shaped this way |
 | [`agent-ticketing-todo.md`](agent-ticketing-todo.md) | the build plan this implements |

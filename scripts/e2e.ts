@@ -217,7 +217,7 @@ async function beat2HappyPath(): Promise<{ pass: boolean; session?: Session }> {
   await api(`/api/dev/reset`, { body: {} });
 
   const alice = await queueHuman('alice');
-  await api(`/api/dev/fast-forward`, { body: {} });
+  await api(`/api/dev/fast-forward`, { body: { deferAllocations: true } });
 
   const requested = await api<{
     ok: true;
@@ -298,7 +298,7 @@ async function beat3Deferral(): Promise<boolean> {
   const slotId = status.body.allocation[0].slotId;
 
   // Collapse the window: this expires every live approval deadline.
-  const ff = await api<{ deferrals: number }>('/api/dev/fast-forward', { body: {} });
+  const ff = await api<{ deferrals: number }>(`/api/dev/fast-forward`, { body: { deferAllocations: true } });
   await delay(150);
 
   const board = await api<{
@@ -385,7 +385,7 @@ async function beat6Attacks(): Promise<boolean> {
 async function failureMatrix(): Promise<boolean> {
   await api(`/api/dev/reset`, { body: {} });
   const alice = await queueHuman('failure-alice');
-  await api(`/api/dev/fast-forward`, { body: {} });
+  await api(`/api/dev/fast-forward`, { body: { deferAllocations: true } });
 
   const cases: { name: string; code: string; actual: string; status: number }[] = [];
 
@@ -449,7 +449,7 @@ async function failureMatrix(): Promise<boolean> {
       session: alice,
     });
     // Let the window lapse without answering, then try to use it.
-    await api(`/api/dev/fast-forward`, { body: {} });
+    await api(`/api/dev/fast-forward`, { body: { deferAllocations: true } });
     await delay(120);
     const res = await api<{ code: string }>('/api/slot/claim', {
       body: { approval: requested.body.approvalId },
@@ -462,7 +462,7 @@ async function failureMatrix(): Promise<boolean> {
   {
     await api(`/api/dev/reset`, { body: {} });
     const denier = await queueHuman('denier');
-    await api(`/api/dev/fast-forward`, { body: {} });
+    await api(`/api/dev/fast-forward`, { body: { deferAllocations: true } });
     const requested = await api<{ approvalId: string; requestId: string }>('/api/slot/request', { body: {}, session: denier });
     await api('/api/auth/deny', { body: { requestId: requested.body.requestId }, session: denier });
     const res = await api<{ code: string }>('/api/slot/claim', {
@@ -512,7 +512,7 @@ async function currentEventId(): Promise<string> {
 async function concurrencyCheck(): Promise<boolean> {
   await api(`/api/dev/reset`, { body: {} });
   const alice = await queueHuman('race-alice');
-  await api(`/api/dev/fast-forward`, { body: {} });
+  await api(`/api/dev/fast-forward`, { body: { deferAllocations: true } });
 
   const requested = await api<{ approvalId: string; requestId: string; url?: string }>(`/api/slot/request`, {
     body: {},

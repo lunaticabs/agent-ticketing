@@ -13,12 +13,16 @@ export const POST = route(async (req) => {
   const body = await readJson(req);
   const result = fastForward({
     eventId: typeof body.eventId === 'string' ? body.eventId : undefined,
+    // Read, not dropped. `scripts/e2e.ts` has always sent this parameter and it
+    // never arrived, so the deferral demo and the "just end the wait" case were
+    // the same request whether the caller wanted that or not.
+    deferAllocations: typeof body.deferAllocations === 'boolean' ? body.deferAllocations : undefined,
   });
   return json({
     ok: true,
     ...result,
-    note: result.drew
-      ? 'draw settled now and allocation windows collapsed — the next sweep defers'
-      : 'draw was already settled; allocation windows collapsed',
+    note: result.deferAllocations
+      ? 'draw settled (if it was open) and every allocation window collapsed — the next sweep defers'
+      : 'draw settled (if it was open); live allocations were left alone',
   });
 });

@@ -29,6 +29,9 @@ import { PresenceError } from '../lib/errors';
 import { requestClaimApproval } from '../lib/gate';
 import { allocationOutcome } from '../lib/mcpagent';
 import { syncApproval } from '../lib/approval';
+import { joinQueue } from '../lib/queue';
+import { fastForward, resetDemo } from '../lib/devmode';
+import { ensureSlots, sweep } from '../lib/slots';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  1. The agent stops waiting once the draw is settled
@@ -196,4 +199,83 @@ test('W-8 — an approval whose window has passed does not block the next attemp
     .get(first.approvalId) as { state: string };
   assert.equal(stale.state, 'EXPIRED', 'and the stale one is explicitly retired, not left PENDING forever');
   assert.equal(pendingCount(event.id, carol), 1, 'exactly one live authorization remains');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  3. Fast-forwarding a wait must not destroy what the wait produced
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The reported symptom: during an agent run, pressing "Fast-forward windows"
+ * (which is meant to end the countdown) left the agent waiting on a phone
+ * approval that could never help it.
+ *
+ * The cause was one operation doing two things that are only compatible by
+ * accident. `fastForward` settled the draw — which *creates* allocations — and
+ * then dragged every allocation deadline into the past, which destroys them
+ * inside the same request. The agent polls every 1.5s, so by the time it looked,
+ * its slot had been deferred away; it then requested an authorization for a slot
+ * it no longer held.
+ *
+ * The stage beats never noticed because they read the allocation in the same
+ * breath as the call — the window expires on the *next* sweep. A test that reads
+ * the state immediately would keep passing with the bug in place, so these read
+ * after a sweep.
+ */
+test('F-1 — ending the wait settles the draw and leaves the allocation standing', () => {
+  reset();
+  const event = freshEvent({ slots: 4, approvalWindowSec: 60 });
+  const [alice] = queueAndDraw(event.id, ['ff-alice']);
+  void alice;
+  const id = human('ff-alice');
+
+  // A live window the operator wants to skip: a queue with one entrant who has
+  // not been served, and a draw that has not happened. `resetDemo` is the honest
+  // way to get there — hand-written DELETEs left `allocated_at` behind, which
+  // made the draw skip this human entirely and the test fail for its own reason.
+  resetDemo({ eventId: event.id });
+  joinQueue(event.id, id);
+  assert.equal(
+    (getDb().prepare(`SELECT lottery_drawn_at FROM event WHERE id = ?`).get(event.id) as { lottery_drawn_at: number | null }).lottery_drawn_at,
+    null,
+    'the window must be open before the fast-forward',
+  );
+
+  const result = fastForward({ eventId: event.id });
+
+  assert.equal(result.drew, true, 'the draw was open, so it settles now');
+  assert.equal(result.deferAllocations, false, 'and the destructive half is off by default');
+
+  // The next sweep is where the old bug showed itself.
+  sweep(event.id);
+
+  const allocated = getDb()
+    .prepare(`SELECT * FROM slot WHERE event_id = ? AND holder_continuity_id = ?`)
+    .all(event.id, id) as { state: string; approval_deadline: number | null }[];
+
+  assert.equal(allocated.length, 1, 'the human the draw reached must still hold their slot');
+  assert.equal(allocated[0].state, 'ALLOCATED', 'and it must still be claimable, not deferred');
+  assert.ok(
+    (allocated[0].approval_deadline ?? 0) > Date.now(),
+    'the approval window is a real one, so a human can still answer it',
+  );
+});
+
+test('F-2 — asking for it explicitly still collapses the windows, for the deferral demo', () => {
+  reset();
+  const event = freshEvent({ slots: 4, approvalWindowSec: 60 });
+  queueAndDraw(event.id, ['ff-defer']);
+  const id = human('ff-defer');
+
+  const result = fastForward({ eventId: event.id, deferAllocations: true });
+  sweep(event.id);
+
+  assert.equal(result.deferAllocations, true);
+  const slot = getDb()
+    .prepare(`SELECT * FROM slot WHERE event_id = ? AND holder_continuity_id = ?`)
+    .get(event.id, id) as { state: string } | undefined;
+  assert.ok(
+    !slot || slot.state !== 'ALLOCATED',
+    'the deferral demo is the one caller that wants the allocation gone',
+  );
 });

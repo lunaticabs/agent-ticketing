@@ -362,24 +362,43 @@ export function resetDemo(opts: { eventId?: string } = {}): { reset: true; event
  * it settles the draw and then expires every live approval window so deferrals
  * fire on cue.
  */
-export function fastForward(opts: { eventId?: string } = {}): {
+export function fastForward(opts: { eventId?: string; deferAllocations?: boolean } = {}): {
   eventId: string;
   drew: boolean;
   deferrals: number;
+  deferAllocations: boolean;
 } {
   assertDevRoutes();
   const event = opts.eventId ? getEvent(opts.eventId) : primaryEvent();
   if (!event) throw new PresenceError('event_not_found', 'no event');
 
+  // Default FALSE, and that default is the fix for a real bug.
+  //
+  // This one operation used to do two things that are only compatible by
+  // accident: settle the draw (which *creates* allocations) and drag every
+  // allocation deadline into the past (which destroys them). Pressed during an
+  // agent run — the agent joins, the operator fast-forwards the wait — the slot
+  // the agent had just been given was expired inside the same request, so the
+  // agent went on to request an authorization for a slot that no longer existed
+  // and sat waiting for a phone approval that could never help. The countdown
+  // the operator meant to end was the *draw* window.
+  //
+  // It read as working for the stage beats only because they read the allocation
+  // immediately, before the next sweep: the deferral demo (`scripts/e2e.ts`
+  // beat 3) wants exactly this behaviour and now asks for it by name.
+  const deferAllocations = opts.deferAllocations ?? false;
+
   const drew = event.lottery_drawn_at === null;
   if (drew) settleLottery(event.id);
 
-  // Pull every allocated deadline into the past so the very next sweep defers.
-  getDb()
-    .prepare(
-      `UPDATE slot SET approval_deadline = ? WHERE event_id = ? AND state = 'ALLOCATED'`,
-    )
-    .run(nowMs() - 1000, event.id);
+  if (deferAllocations) {
+    // Pull every allocated deadline into the past so the very next sweep defers.
+    getDb()
+      .prepare(
+        `UPDATE slot SET approval_deadline = ? WHERE event_id = ? AND state = 'ALLOCATED'`,
+      )
+      .run(nowMs() - 1000, event.id);
+  }
 
   const transitions = sweep(event.id);
   const deferrals = transitions.filter(
@@ -390,10 +409,10 @@ export function fastForward(opts: { eventId?: string } = {}): {
     type: 'dev.fast_forward',
     eventId: event.id,
     severity: 'warn',
-    payload: { drew, deferrals, note: 'windows collapsed for the demo clock' },
+    payload: { drew, deferrals, deferAllocations, note: 'windows collapsed for the demo clock' },
   });
 
-  return { eventId: event.id, drew, deferrals };
+  return { eventId: event.id, drew, deferrals, deferAllocations };
 }
 
 /** Seed a self-contained scenario: queue + draw + allocations, ready to demo. */
