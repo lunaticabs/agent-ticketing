@@ -48,6 +48,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Agent } from 'undici';
 import type { NextRequest } from 'next/server';
+import { publicBaseUrl } from '../worldid/config';
 
 /** Where `scripts/dev.sh` writes the certificate it generates. */
 const LOCAL_CERT = path.join(process.cwd(), 'certificates', 'localhost.pem');
@@ -75,9 +76,94 @@ function localDispatcher(origin: string): Agent | null {
   return dispatcher;
 }
 
-/** The origin this request arrived on. */
+/**
+ * The origin to dial when calling *this* server.
+ *
+ * ── Why "the origin the request arrived on" is not enough ──────────────────
+ *
+ * That was the original rule, and it is right on a laptop and wrong behind a
+ * proxy. A container binds `0.0.0.0:3000`, so the server's idea of its own
+ * address is the *wildcard* — `https://0.0.0.0:3000` — which is not a place
+ * anything can connect to. The MCP agent and the bot army both learned this the
+ * hard way on the public deployment: the agent's child process was handed that
+ * address and every tool call came back `transport_error — fetch failed`, which
+ * names neither the address nor the reason.
+ *
+ * The rules, in order, and why each one is safe:
+ *
+ *   1. **A loopback origin is kept**, but normalised to `localhost`. That keeps
+ *      the self-signed-certificate path working (`NODE_EXTRA_CA_CERTS` is set
+ *      for loopback hosts only) while still dodging a literal `0.0.0.0`.
+ *   2. **A host the caller supplied is used when it is a real one.** Fly sets
+ *      `x-forwarded-host` to the hostname the visitor asked for, and a forged
+ *      value here is harmless: the worst it can do is make this server send a
+ *      request to a hostname the attacker already controls. It is never used to
+ *      decide a *credential* — the OIDC `redirect_uri` comes from configuration
+ *      precisely so that a forged Host cannot be signed into a token exchange
+ *      (`lib/callback.ts`).
+ *   3. **Otherwise, the configured public URL.** This is the case that matters
+ *      in production: `0.0.0.0`, or a bare Host the proxy did not rewrite.
+ *
+ * `PRESENCE_PUBLIC_URL` is not imported for this: `publicBaseUrl()` already
+ * derives the origin from `WORLDID_REDIRECT_URI`, the one value that cannot be
+ * approximated.
+ */
 export function selfOrigin(req: NextRequest): string {
-  return new URL(req.url).origin;
+  const arrivals = new URL(req.url);
+  const arrived = arrivals.origin;
+
+  // 1. Loopback: the local dev server, including its self-signed certificate.
+  if (isLoopback(arrived)) {
+    return `${arrivals.protocol}//localhost${arrivals.port ? `:${arrivals.port}` : ''}`;
+  }
+
+  // 2. A real host from the proxy, or the one that came with the request.
+  //
+  // The scheme is the request's own, not a hardcoded `https`: in production the
+  // app is served over TLS either way, and locally `npm run dev:http` serves
+  // plain HTTP on a non-loopback address (a phone on the same wifi). Guessing
+  // `https` there would break the one flow this function exists to fix.
+  const header = (name: string): string | null => req.headers?.get(name) ?? null;
+  const scheme = firstHeaderValue(header('x-forwarded-proto')) ?? arrivals.protocol.replace(':', '');
+  const host = firstHeaderValue(header('x-forwarded-host')) ?? arrivals.host;
+  const resolved = originFromHost(host, scheme);
+  if (resolved) return resolved;
+
+  // 3. A wildcard, a header made of punctuation, or nothing usable: ask the
+  //    configuration. `localhost` on our own port is the last resort, for the
+  //    local case where no public URL is configured at all.
+  const configured = publicBaseUrl();
+  if (configured) return configured;
+  return `http://localhost${arrivals.port ? `:${arrivals.port}` : ''}`;
+}
+
+function firstHeaderValue(value: string | null): string | null {
+  const first = value?.split(',')[0]?.trim();
+  return first ? first : null;
+}
+
+/**
+ * An origin for `host`, or null when it is not an address worth dialling.
+ *
+ * `null` for the wildcard is deliberate rather than "map it to localhost here":
+ * a `Host: 0.0.0.0` header means the proxy did not rewrite the host, and the
+ * right answer to that is the deployment's configured public URL — not a guess
+ * that this must be a local bind. Test S-5 pins that distinction, and it was a
+ * real bug in the first version of this function.
+ */
+function originFromHost(host: string, scheme: string): string | null {
+  if (!host) return null;
+  const [hostname] = host.split(':');
+  const bare = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+
+  if (bare === '0.0.0.0' || bare === '::' || bare === '') return null;
+  if (bare !== 'localhost' && !/^[a-z0-9.-]+$/i.test(bare)) return null;
+
+  try {
+    return new URL(`${scheme}://${host}`).origin;
+  } catch {
+    return null;
+  }
 }
 
 /** Loopback, i.e. an address whose certificate we might have generated ourselves. */

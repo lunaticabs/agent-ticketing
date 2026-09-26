@@ -27,11 +27,16 @@
  *
  *   1. the post-callback redirect sends the browser to `https://0.0.0.0:3000/`,
  *      an address that exists only inside the container; and
- *   2. `openid-client`'s `authorizationCodeGrant` derives the token request's
- *      `redirect_uri` from this URL — `stripParams(currentUrl)`, read in the
- *      library's source, not from the configuration — so the code exchange
- *      presents a redirect URI that does not match the portal registration, and
- *      the IdP refuses it.
+ *   2. the OIDC library's code exchange derives the token request's
+ *      `redirect_uri` from this URL — `stripParams(currentUrl)`, read in its
+ *      source, not from the configuration — so the exchange presents a redirect
+ *      URI that does not match the portal registration, and the IdP refuses it.
+ *
+ *      (Written without naming the library package, deliberately: the security
+ *      self-check forbids that name anywhere outside `worldid/`, comment or
+ *      import, and loosening a check meant to catch a second OIDC implementation
+ *      so a comment could mention one would be the wrong trade. The exact call is
+ *      named in `lib/selfcall.ts`'s sibling note and in the commit message.)
  *
  * `publicBaseUrl()` is the authoritative answer: it is derived from
  * `WORLDID_REDIRECT_URI`, the one value that cannot be approximated because the

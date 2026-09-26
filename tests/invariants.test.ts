@@ -466,15 +466,26 @@ test('the origin a self-call uses is the one the request arrived on', async () =
   // from the registered redirect_uri. That is the wrong answer for reaching
   // yourself, and using it has caused three separate bugs here.
   const { selfOrigin } = await import('../lib/selfcall');
-  const fake = (url: string) => ({ url }) as unknown as import('next/server').NextRequest;
+  const fake = (url: string) =>
+    ({ url, headers: new Map() }) as unknown as import('next/server').NextRequest;
 
   assert.equal(selfOrigin(fake('https://localhost:3000/api/dev/agent')), 'https://localhost:3000');
-  assert.equal(selfOrigin(fake('http://127.0.0.1:4000/api/dev/bots')), 'http://127.0.0.1:4000');
+  // A loopback address is kept as loopback but normalised to `localhost`, because
+  // `selfCallEnv` attaches the self-signed certificate for loopback origins only.
+  // The important half is that it stays reachable and stays local; which of the
+  // loopback spellings it uses is not what this test is about.
+  assert.equal(selfOrigin(fake('http://127.0.0.1:4000/api/dev/bots')), 'http://localhost:4000');
   // Whatever the configured public URL says, the arriving request wins.
   assert.notEqual(
     selfOrigin(fake('http://localhost:3000/api/dev/bots')),
     'https://localhost:3000',
     'the request origin must not be replaced by the configured one',
+  );
+  // The one origin that is never an answer: the container's wildcard bind, which
+  // nothing can dial and which broke every agent tool call in production.
+  assert.ok(
+    !selfOrigin(fake('https://0.0.0.0:3000/api/dev/agent')).includes('0.0.0.0'),
+    'the wildcard binding address must never be handed out as somewhere to call',
   );
 });
 
