@@ -250,8 +250,17 @@ change. This schema has none.
 
 ## When something is wrong
 
+**First, rule out the account.** A stopped machine and a broken app look identical
+from a browser — both are a TLS error or a blank page — so check the account
+before reading any code. This one has already cost an hour of debugging:
+
+```bash
+fly status --app agent-ticket-demo    # if this errors, it is not the app
+```
+
 | Symptom | Cause | Fix |
 |---|---|---|
+| Every `fly` command fails with `trial has ended, please add a credit card`; the site is unreachable | Fly's free trial expired. Every new organisation needs a card on file, and this is a *platform* action — nothing in `fly.toml` prevents it, including `auto_stop_machines = "off"` | Add a card at <https://fly.io/trial>. The app and its volume are not deleted, only stopped. Expect roughly **$3.19/month now, ~$3.69/month after Fly's 1 Oct 2026 price change** (one `shared-cpu-1x`/512MB machine + a 1GB volume in `nrt`). After paying, confirm the machine came back and the data survived: `fly status`, then `curl /api/health`. |
 | Build fails: `gyp ERR! find Python` under `/app/node_modules/better-sqlite3` | `better-sqlite3` ships prebuilds, but none matched this Node ABI, so npm fell back to `node-gyp` — and the slim image has no toolchain | Already handled: the Dockerfile installs `python3 make g++` in both build stages. This happened on the first real deploy, which is why the toolchain is there rather than assumed unnecessary. |
 | `/api/health` says `idp.mode: "local"` | Client credentials not set, or set without `WORLDID_REDIRECT_URI` | Step 2. The screens also say so out loud. |
 | Sign-in comes back `invalid_request` at the IdP | `redirect_uri` differs from the registration by so much as a trailing slash | Compare `/api/health`'s `urls.redirectUri` with the portal, character by character. |
