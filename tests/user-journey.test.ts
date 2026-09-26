@@ -1128,72 +1128,109 @@ test('journey · the admin panel refuses to pretend when dev routes are off', as
   }
 });
 
-test('journey · the purchase gate can be triggered repeatedly, each refusal its own', async () => {
-  // The hackathon demo needs the failure modes to be *reproducible on demand*:
-  // press authorize, read the refusal, press again. That only works if a refusal
-  // leaves the button where it was — and it did not, because a repeat used to
-  // stack a second PENDING approval, and the console renders `openApprovals[0]`.
-  // The screen then said "waiting for you to approve" no matter what you pressed,
-  // and every failure mode was hidden behind the first pending authorization.
+test('journey · the queue action stays offered, so every later state is reachable', async () => {
+  // The entry point to the purchase flow used to vanish the moment it succeeded:
+  // one press, and no control was left that could ask again. Every server state
+  // after that was therefore unreachable from the screen — a settled draw answers
+  // `queue_closed`, and there was no way to show it.
+  //
+  // What this test pins is the *affordance*, not the protocol. Whether a second
+  // press is accepted, idempotent, or refused is the server's business, and it is
+  // covered against a real server in `npm run e2e`; re-implementing that state
+  // machine in a stub here is how the first three versions of this test went
+  // wrong.
   resetNetwork();
   stubSignedIn();
 
-  // The human holds a confirmed slot, so the gate refuses with
-  // `already_owns_entitlement` — the most interesting of the failure modes,
-  // because it is the anti-scalping rule refusing a *second* purchase.
-  stub(
-    '/api/queue/status',
+  const notJoined = () =>
     statusPayload({
-      allocation: [],
-      holding: [{ slotId: 'slot_tokyo_night_1', state: 'CONFIRMED' }],
-    }),
-  );
-  // No allocation is exactly the state this test is about: the button used to be
-  // hidden here, which hid every refusal the button can produce.
+      queue: { entryId: null, joined: false, arrivalSeq: null, lotteryRank: null, allocatedAt: null, stats: {}, total: 0 },
+    });
+  const inQueue = () =>
+    statusPayload({
+      queue: { entryId: 'q_1', joined: true, arrivalSeq: 1, lotteryRank: null, allocatedAt: null, stats: {}, total: 1 },
+    });
+
+  let joined = false;
+  stub('/api/queue/status', () => (joined ? inQueue() : notJoined()));
 
   let attempts = 0;
-  stub(
-    '/api/slot/request',
-    () => {
-      attempts += 1;
-      return {
-        ok: false,
-        code: 'already_owns_entitlement',
-        message: 'you already hold a confirmed slot',
-        details: { slotId: 'slot_tokyo_night_1' },
-      };
-    },
-    409,
-  );
+  stub('/api/queue/join', () => {
+    attempts += 1;
+    joined = true;
+    return { ok: true, created: attempts === 1, arrivalSeq: 1, queueLength: 1 };
+  });
 
   const ConsolePage = (await import('../app/page')).default;
   const screen = await render(ConsolePage);
 
   try {
+    await screen.waitFor((s) => s.buttons().includes('Join the queue'), 'the queue action');
+    await screen.click('Join the queue');
+    await screen.waitFor((s) => s.text().includes('joined queue at arrival #1'), 'the first join');
+
+    // The point: after the state has moved on, the action is still there.
     await screen.waitFor(
-      (s) => s.buttons().includes('Ask me to authorize'),
-      'the authorize button, with a confirmed slot already held',
+      (s) => s.buttons().includes('Ask to enter the queue again'),
+      'the queue action, still offered after a successful join',
     );
 
-    // Three presses. Every one must reach the server, and every one must come
-    // back as a refusal the operator can read off the screen.
-    for (let press = 1; press <= 3; press += 1) {
-      await screen.click('Ask me to authorize');
-      await screen.waitFor(
-        (s) => s.text().includes('already_owns_entitlement') || s.text().includes('already hold'),
-        `refusal ${press} to be shown`,
-      );
-      assert.ok(
-        screen.buttons().includes('Ask me to authorize'),
-        `press ${press}: the button must still be offered, so the next failure mode is reachable`,
-      );
-      assert.ok(
-        !screen.text().includes('waiting for you to approve'),
-        `press ${press}: no authorization was started, so nothing may look pending`,
-      );
-    }
+    await screen.click('Ask to enter the queue again');
+    await screen.waitFor(
+      (s) => s.text().includes('already in the queue'),
+      'the second press to be answered by the server, not swallowed by the UI',
+    );
+    assert.equal(attempts, 2, 'both presses must be real requests');
+    assert.ok(
+      screen.buttons().includes('Ask to enter the queue again'),
+      'and it stays offered, so the next state can be demonstrated too',
+    );
+  } finally {
+    await screen.unmount();
+  }
+});
 
-    assert.equal(attempts, 3, 'each press must be a real request, not a cached refusal');
+test('journey · the authorization request is NOT repeatable while one is pending', async () => {
+  // The narrower version of the rule above, and the reason it had to be written
+  // down: an outstanding authorization is a challenge for one slot. Offering the
+  // button again let a human approve on their phone, come back to a page that
+  // looked untouched, and start a second one — two live challenges for one slot,
+  // with the console rendering only the first.
+  resetNetwork();
+  stubSignedIn();
+  stub('/api/queue/status', statusPayload({ allocation: [allocated()] }));
+  stub('/api/slot/request', {
+    ok: true,
+    approvalId: 'apv_1',
+    requestId: 'areq_1',
+    mode: 'local',
+    degraded: true,
+    note: 'fallback',
+    url: 'http://localhost:3000/auth/local?request=areq_1',
+    boundAction: 'buy_slot:evt_test',
+    boundSignal: 'evt_test:cid_abc123',
+    slotId: 'slot_tokyo_night_1',
+    windowSec: 90,
+    expiresAt: Date.now() + 90_000,
+  });
+
+  const ConsolePage = (await import('../app/page')).default;
+  const screen = await render(ConsolePage);
+
+  try {
+    await screen.waitFor((s) => s.buttons().includes('Ask me to authorize'), 'the authorize action');
+    await screen.click('Ask me to authorize');
+
+    // Local state reports it immediately, so no second challenge can be started
+    // from this screen even before the next poll.
+    await screen.waitFor(
+      (s) => s.text().includes('waiting for you to approve'),
+      'the panel to show the outstanding authorization',
+    );
+    assert.ok(
+      !screen.buttons().includes('Ask me to authorize'),
+      'with a challenge outstanding there is nothing left to ask for',
+    );
   } finally {
     await screen.unmount();
   }

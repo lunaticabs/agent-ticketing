@@ -526,10 +526,30 @@ export default function ConsolePage() {
                 </div>
               )}
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                {!status.data?.queue?.joined && (
+              {/*
+                ── The queue action stays offered, on purpose ──────────────
+                It used to disappear the moment it succeeded, which made the
+                entry point to the whole purchase flow a one-shot: after the
+                first press there was no control left that could ask again, and
+                so no way to *show* what the server does in each state. Every
+                refusal behind it was unreachable from the screen.
+
+                Pressing it again is a real request every time, and the server
+                answers according to the state — the demo's failure modes are
+                exactly those answers:
+
+                  · window still open, already in   → the same entry comes back
+                    (`created: false`; re-joining cannot improve anyone's odds)
+                  · draw already settled            → `queue_closed`
+                  · not signed in                   → `not_authenticated`
+
+                So it is a button, not a badge. The badges below report state;
+                this one is how a person asks.
+              */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {signedIn && (
                   <Button tone="live" onClick={join} disabled={busy}>
-                    Join the queue
+                    {status.data?.queue?.joined ? 'Ask to enter the queue again' : 'Join the queue'}
                   </Button>
                 )}
                 {status.data?.queue?.joined && !status.data?.queue?.lotteryRank && !drawPending && (
@@ -615,17 +635,6 @@ export default function ConsolePage() {
               ))}
             </div>
           )}
-
-          {/* No allocation: the button is still the way to reach a refusal. */}
-          {(status.data?.allocation?.length ?? 0) === 0 &&
-            !approval &&
-            status.data?.queue?.joined && (
-              <div className="mt-3">
-                <Button tone="live" onClick={requestApproval} disabled={busy}>
-                  Ask me to authorize
-                </Button>
-              </div>
-            )}
 
           {approval && (
             <div className="mt-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-panel-2)] p-3">
