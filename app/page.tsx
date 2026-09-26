@@ -393,9 +393,15 @@ export default function ConsolePage() {
 
       <header className="flex flex-wrap items-center justify-between gap-3 py-4">
         <div>
-          <h1 className="text-3xl font-black tracking-tight">Agent Ticketing Demo</h1>
+          <h1 className="text-3xl font-black tracking-tight">
+            HumanGate
+            <span className="ml-3 align-middle text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--color-muted)]">
+              live demo
+            </span>
+          </h1>
           <p className="text-sm text-[var(--color-muted)]">
-            Your agent queues. When a slot arrives, a real human has to be there — or it moves on.
+            Verifiable authorization for AI agents, demonstrated on a ticket queue. Your agent
+            queues; when a slot arrives, a real human has to be there — or it moves on.
           </p>
         </div>
         <nav className="flex gap-3 text-sm">

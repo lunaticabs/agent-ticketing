@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Agent Ticketing Demo — agent queueing with fresh human authorization',
+  title: 'HumanGate — verifiable authorization for AI agents',
   description:
-    'Your agent queues for you. The moment a slot is handed over, it asks a real human to prove they are there. If nobody answers, the slot moves on.',
+    'An agent can do the work. It cannot authorize it. HumanGate asks a real human, verified with World ID, to authorize each protected action — and consumes that authorization exactly once.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

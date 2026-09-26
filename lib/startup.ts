@@ -65,7 +65,7 @@ export function printStartupBanner(): void {
 
   const mode = idpMode();
   const lines: string[] = [];
-  const title = 'Agent Ticketing Demo — agent queueing, fresh human authorization';
+  const title = 'HumanGate — verifiable authorization for AI agents';
   lines.push('');
   lines.push(...boxed(title));
   const baseUrl = publicBaseUrl();

@@ -229,8 +229,8 @@ export function startAgentSession(input: {
     kind: 'note',
     label: 'the agent takes the job',
     // No product name: this line is on the projector, and the deployment is
-    // called "Agent Ticketing Demo" now. The detail that matters is that a real
-    // MCP client is being spawned.
+    // labelled "live demo" under the HumanGate title. The detail that matters
+    // is that a real MCP client is being spawned.
     detail: 'connecting to the demo\u2019s MCP server over stdio',
   });
 
