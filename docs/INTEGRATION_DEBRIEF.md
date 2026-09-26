@@ -422,7 +422,7 @@ gate's refusal sitting next to it in the audit trail.
 ## 6. Reproduction
 
 ```bash
-git clone <repo> && cd presence
+git clone <repo> && cd humangate
 npm install && npm run seed
 ENABLE_DEV_ROUTES=1 npm run dev
 

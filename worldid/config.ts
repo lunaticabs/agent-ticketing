@@ -29,6 +29,8 @@
  * proofs from; `WORLDID_ISSUER` names the ② deployment we talk to.
  */
 
+import { env } from '../lib/env';
+
 /** Assurance profile we accept. Constant. Never a parameter. */
 export const WORLDID_ENVIRONMENT = 'sandbox' as const;
 
@@ -83,7 +85,7 @@ export function hasRealIdp(): boolean {
 
 /** Requested mode, downgraded to `local` when credentials are absent. */
 export function idpMode(): IdpMode {
-  const requested = (process.env.PRESENCE_IDP_MODE?.trim() || 'auto').toLowerCase();
+  const requested = (env('IDP_MODE') ?? 'auto').toLowerCase();
   if (!hasRealIdp()) return 'local';
   if (requested === 'device') return 'device';
   if (requested === 'local') return 'local';
@@ -98,7 +100,7 @@ export function idpMode(): IdpMode {
  * There are two settings that describe the same thing, and an earlier version
  * read each one independently:
  *
- *   PRESENCE_PUBLIC_URL   used to build consent links and transfer links
+ *   HUMANGATE_PUBLIC_URL   used to build consent links and transfer links
  *   WORLDID_REDIRECT_URI  sent to the IdP, and must match the portal byte for byte
  *
  * Left independent they can disagree, and the failure is silent and confusing:
@@ -115,7 +117,7 @@ export function idpMode(): IdpMode {
  * it lie.
  */
 export function publicBaseUrl(): string {
-  const explicit = process.env.PRESENCE_PUBLIC_URL?.trim();
+  const explicit = env('PUBLIC_URL');
   if (explicit) return stripTrailingSlash(explicit);
 
   // Derive from the registered redirect URI. It is the authoritative statement
@@ -154,7 +156,7 @@ function stripTrailingSlash(value: string): string {
  */
 export function baseUrlConsistency(): { consistent: boolean; detail: string | null } {
   const raw = process.env.WORLDID_REDIRECT_URI?.trim();
-  const explicitBase = process.env.PRESENCE_PUBLIC_URL?.trim();
+  const explicitBase = env('PUBLIC_URL');
 
   if (raw) {
     let redirectOrigin: string;
@@ -167,7 +169,7 @@ export function baseUrlConsistency(): { consistent: boolean; detail: string | nu
       return {
         consistent: false,
         detail:
-          `PRESENCE_PUBLIC_URL is ${stripTrailingSlash(explicitBase)} but the registered ` +
+          `HUMANGATE_PUBLIC_URL is ${stripTrailingSlash(explicitBase)} but the registered ` +
           `redirect URI is on ${redirectOrigin}`,
       };
     }
@@ -188,14 +190,14 @@ export const ID_TOKEN_MAX_AGE_SEC = 300;
  * real OIDC path it is used for session cookies only.
  */
 export function serverSigningKey(): Buffer {
-  const raw = process.env.PRESENCE_SIGNING_KEY?.trim();
+  const raw = env('SIGNING_KEY');
   if (raw && raw.length >= 32) return Buffer.from(raw, 'utf8');
   // Deterministic dev-only key so `npm run dev` works out of the box. Never
   // acceptable in a deployment; `lib/startup.ts` shouts about it.
-  return Buffer.from('presence-dev-only-signing-key-do-not-use-in-production!!', 'utf8');
+  return Buffer.from('humangate-dev-only-signing-key-do-not-use-in-production!!', 'utf8');
 }
 
 export function hasExplicitSigningKey(): boolean {
-  const raw = process.env.PRESENCE_SIGNING_KEY?.trim();
+  const raw = env('SIGNING_KEY');
   return Boolean(raw && raw.length >= 32);
 }

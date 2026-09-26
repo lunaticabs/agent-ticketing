@@ -1,4 +1,4 @@
-# Presence — demo video script (English, 2 minutes)
+# HumanGate — demo video script (English, 2 minutes)
 
 **About 210 spoken words.** At a calm 140 words per minute that is roughly 90
 seconds of speech, which leaves 30 seconds for the screen to work and for pauses.

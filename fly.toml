@@ -36,7 +36,7 @@ dockerfile = "Dockerfile"
 
 [env]
 # The database lives on the volume, never in the image.
-PRESENCE_DB = "/data/presence.db"
+HUMANGATE_DB = "/data/presence.db"
 PORT = "3000"
 # Which IdP deployment to talk to. Not a secret, and pinned here so a deploy
 # cannot accidentally point at a different environment (RED LINE 4).
@@ -61,10 +61,10 @@ min_machines_running = 1
 # build its public links from configuration and NOT from the incoming request's
 # scheme — see `worldid/config.ts`, where the redirect URI is authoritative.
 # Set at deploy time:
-#   fly secrets set PRESENCE_PUBLIC_URL=https://<app>.fly.dev \
+#   fly secrets set HUMANGATE_PUBLIC_URL=https://<app>.fly.dev \
 #                   WORLDID_REDIRECT_URI=https://<app>.fly.dev/api/auth/world/callback \
 #                   WORLDID_CLIENT_ID=... WORLDID_CLIENT_SECRET=... \
-#                   PRESENCE_SIGNING_KEY="$(openssl rand -base64 48)"
+#                   HUMANGATE_SIGNING_KEY="$(openssl rand -base64 48)"
 
 [[mounts]]
 source = "presence_data"

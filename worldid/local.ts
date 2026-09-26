@@ -28,7 +28,7 @@
  *      mode deliberately does **not** reuse it, so a demo cannot confuse the
  *      two (see the T-6.2 requirement "绝不能与真实验证路径共用代码分支").
  *
- * The assertion is HMAC-SHA256 signed with `PRESENCE_SIGNING_KEY`, which per
+ * The assertion is HMAC-SHA256 signed with `HUMANGATE_SIGNING_KEY`, which per
  * RED LINE 2 never leaves the server.
  */
 import crypto from 'node:crypto';
@@ -37,12 +37,12 @@ import { continuityIdFrom, deriveNullifier, isFresh } from './nullifier';
 import { markApproved } from './requests';
 
 /** Namespace that makes a local subject unmistakable in the database and UI. */
-export const LOCAL_ISSUER = 'local:presence-fallback';
+export const LOCAL_ISSUER = 'local:humangate-fallback';
 
 /**
  * Issuers this server is allowed to have minted an assertion for.
  *
- * `local:presence-fallback` is the local IdP itself. `local:dev-impersonation` is
+ * `local:humangate-fallback` is the local IdP itself. `local:dev-impersonation` is
  * the T-6.2 demo bypass: simulated humans written straight into the database.
  * They belong together because the check below is "we signed this", not "it
  * carries one particular string" — and because the laundering simulation needs
@@ -73,7 +73,7 @@ interface LocalAssertionPayload {
   acr: string;
   amr: string[];
   /** Marks this as a fallback assertion so nothing can mistake it for a real ID token. */
-  presence_degraded: true;
+  humangate_degraded: true;
 }
 
 function b64url(buf: Buffer | string): string {
@@ -112,7 +112,7 @@ export function mintLocalAssertion(args: {
     auth_time: Math.floor((args.authTimeOverride ?? now) / 1000),
     acr: 'local:fallback',
     amr: ['local'],
-    presence_degraded: true,
+    humangate_degraded: true,
   };
   return { assertion: sign(payload), claims: payload };
 }

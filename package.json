@@ -1,9 +1,9 @@
 {
-  "name": "presence",
+  "name": "humangate",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Presence — agent queueing with fresh human authorization at the moment a slot is handed over.",
+  "description": "HumanGate — verifiable authorization middleware for AI agents. A protected action executes only when a human, verified with World ID, authorizes that exact operation.",
   "scripts": {
     "dev": "bash scripts/dev.sh auto",
     "dev:https": "bash scripts/dev.sh https",

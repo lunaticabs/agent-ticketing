@@ -30,7 +30,7 @@ import { printStartupBanner } from '@/lib/startup';
  *      which is why this path also satisfies the freshness requirement.
  */
 
-const ENROLL_ACTION = 'enroll_agent:presence';
+const ENROLL_ACTION = 'enroll_agent:humangate';
 
 export const POST = route(async (req) => {
   printStartupBanner();

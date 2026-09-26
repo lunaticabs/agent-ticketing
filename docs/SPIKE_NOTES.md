@@ -43,7 +43,7 @@ Everything below is about ②. Nothing in this project talks to ①.
 | **What the portal actually does** | The registration form labels the field *"Use exact HTTPS callback URLs, one per line"*, and submitting `http://localhost:3000/api/auth/world/callback` is refused with **"Check the values and try again."** — a generic message that names neither the field nor the reason. |
 | **Conclusion** | **HTTPS is required even for a loopback callback.** The "local, test, and staging" clause describes *other* deployments of the IdP, not this one. A laptop-only demo still needs TLS. |
 | **Cost of getting it wrong** | The failure is at form-submission time with no field-level error, so the natural next guesses are the app name, the optional logo URL, or the auth method — none of which are the problem. |
-| **Resolution in this repo** | `npm run dev:https` generates a self-signed certificate for `localhost` and starts Next with it, exporting `PRESENCE_PUBLIC_URL` and `WORLDID_REDIRECT_URI` so every absolute URL the app builds matches. Register `https://localhost:3000/api/auth/world/callback`. |
+| **Resolution in this repo** | `npm run dev:https` generates a self-signed certificate for `localhost` and starts Next with it, exporting `HUMANGATE_PUBLIC_URL` and `WORLDID_REDIRECT_URI` so every absolute URL the app builds matches. Register `https://localhost:3000/api/auth/world/callback`. |
 | **Why not `next dev --experimental-https` alone** | It downloads mkcert into `~/Library/Caches` (`~/.cache` on Linux). Where that path is unwritable it fails and then **silently falls back to HTTP** — which looks like success and surfaces much later as an `invalid_request` at the authorization endpoint. |
 | **Browser warning** | Expected. The certificate is self-signed, so choose *Advanced → Proceed* once. Nothing about the OIDC flow depends on the certificate being trusted. |
 | **Still needed for a phone demo** | a real tunnel (`cloudflared tunnel --url http://localhost:3000`), because the phone has to reach the consent screen. Note the tunnel hostname becomes the sector, so switching between `localhost` and a tunnel changes every pairwise `sub`. |
@@ -144,7 +144,7 @@ notion of your application's actions.
 So the relying party reconstructs it:
 
 ```ts
-nullifier = sha256("presence/v1/nullifier" | issuer | sub | action | signal)
+nullifier = sha256("humangate/v1/nullifier" | issuer | sub | action | signal)
 ```
 
 plus a second, belt-and-braces database constraint:

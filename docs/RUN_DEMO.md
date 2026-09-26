@@ -28,10 +28,10 @@ Green means the five beats are rehearsed. On `/admin`, press **Reset demo state*
 > ```
 > ✖ the end-to-end rehearsal needs the local fallback idp, but
 >   http://localhost:3000 is running in "oidc" mode
->   restart the server with:  PRESENCE_IDP_MODE=local ENABLE_DEV_ROUTES=1 npm run dev
+>   restart the server with:  HUMANGATE_IDP_MODE=local ENABLE_DEV_ROUTES=1 npm run dev
 > ```
 >
-> `PRESENCE_IDP_MODE=local` forces the fallback even with credentials present, so
+> `HUMANGATE_IDP_MODE=local` forces the fallback even with credentials present, so
 > verifying the five beats never means unregistering anything. Run the real
 > `oidc` path by hand, the way a judge would: sign in, get a slot, approve on the
 > phone.

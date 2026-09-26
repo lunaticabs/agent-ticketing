@@ -23,6 +23,7 @@
  * a true-but-unhelpful message.
  */
 import nextEnv from '@next/env';
+import { env } from '../lib/env';
 
 (nextEnv as { loadEnvConfig: (dir: string, dev: boolean) => unknown }).loadEnvConfig(process.cwd(), true);
 
@@ -55,10 +56,10 @@ const CANDIDATES = ['http://localhost:3000', 'https://localhost:3000'];
  *
  * Tries http before https because a server started without TLS is the common
  * case, and a failed HTTPS handshake against a plain HTTP port is slow to time
- * out. `PRESENCE_BASE_URL` short-circuits the probing.
+ * out. `HUMANGATE_BASE_URL` short-circuits the probing.
  */
 export async function resolveTarget(): Promise<Target> {
-  const explicit = process.env.PRESENCE_BASE_URL?.trim().replace(/\/+$/, '');
+  const explicit = env('BASE_URL')?.replace(/\/+$/, '');
   const candidates = explicit ? [explicit] : CANDIDATES;
 
   const failures: string[] = [];
@@ -105,7 +106,7 @@ export function requireDevRoutes(target: Target): void {
  * With real credentials configured, `idpMode()` returns `oidc` and the consent
  * step genuinely requires a person with a device. That is correct behaviour, and
  * it is why this is a configuration error rather than something to work around:
- * set `PRESENCE_IDP_MODE=local` to verify against the fallback without
+ * set `HUMANGATE_IDP_MODE=local` to verify against the fallback without
  * unregistering anything.
  */
 export function requireLocalIdp(target: Target, what: string): void {
@@ -118,9 +119,9 @@ export function requireLocalIdp(target: Target, what: string): void {
       'possible when the identity provider is simulated. With a real client',
       'registered, consent requires a person with a device — by design.',
       '',
-      'restart the server with:  PRESENCE_IDP_MODE=local ENABLE_DEV_ROUTES=1 npm run dev',
+      'restart the server with:  HUMANGATE_IDP_MODE=local ENABLE_DEV_ROUTES=1 npm run dev',
       '',
-      '(PRESENCE_IDP_MODE=local forces the fallback even with credentials set, so',
+      '(HUMANGATE_IDP_MODE=local forces the fallback even with credentials set, so',
       ' nothing has to be unregistered.)',
     ],
   );
@@ -150,7 +151,7 @@ export function reportPreflight(err: PreflightError): number {
 export function describeTarget(target: Target, what: string): string {
   const urls = target.health.urls;
   const lines = [
-    `  PRESENCE · ${what}`,
+    `  HUMANGATE · ${what}`,
     `  target: ${target.base}`,
     `  idp:    ${target.health.idp.mode}${target.health.idp.degraded ? ' (degraded — identity simulated)' : ''}`,
   ];

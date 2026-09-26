@@ -21,6 +21,7 @@
  * Prints one line of JSON on stdout; anything explanatory goes to stderr.
  */
 import nextEnv from '@next/env';
+import { env } from '../lib/env';
 
 (nextEnv as { loadEnvConfig: (dir: string, dev: boolean) => unknown }).loadEnvConfig(process.cwd(), true);
 
@@ -32,7 +33,7 @@ interface Decision {
 function decide(): Decision {
   const clientId = process.env.WORLDID_CLIENT_ID?.trim();
   const redirect = process.env.WORLDID_REDIRECT_URI?.trim();
-  const base = process.env.PRESENCE_PUBLIC_URL?.trim();
+  const base = env('PUBLIC_URL');
 
   // An explicit https anywhere means the deployment has declared itself https.
   if (redirect?.startsWith('https://') || base?.startsWith('https://')) {

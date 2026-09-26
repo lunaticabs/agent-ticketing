@@ -20,6 +20,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { env } from '../lib/env';
 
 interface Check {
   name: string;
@@ -69,9 +70,9 @@ function rel(f: string): string {
 
 {
   const secrets = [
-    { label: 'PRESENCE_SIGNING_KEY value', needle: process.env.PRESENCE_SIGNING_KEY ?? '' },
+    { label: 'HUMANGATE_SIGNING_KEY value', needle: env('SIGNING_KEY') ?? '' },
     { label: 'WORLDID_CLIENT_SECRET value', needle: process.env.WORLDID_CLIENT_SECRET ?? '' },
-    { label: 'dev fallback signing key', needle: 'presence-dev-only-signing-key' },
+    { label: 'dev fallback signing key', needle: 'humangate-dev-only-signing-key' },
   ].filter((s) => s.needle.length >= 8);
 
   // The client bundle is the thing that actually ships to a browser, so that is
@@ -337,7 +338,7 @@ function rel(f: string): string {
 // ── report ──────────────────────────────────────────────────────────────────
 
 console.log('');
-console.log('  PRESENCE · security self-check (T-7.2)');
+console.log('  HUMANGATE · security self-check (T-7.2)');
 console.log(`  ${'─'.repeat(84)}`);
 
 for (const check of checks) {

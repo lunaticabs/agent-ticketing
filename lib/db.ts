@@ -9,15 +9,17 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
+import { env } from './env';
 
 export type DB = Database.Database;
 
 const SCHEMA_PATH = path.join(process.cwd(), 'db', 'schema.sql');
 
 export function dbPath(): string {
-  return process.env.PRESENCE_DB
-    ? path.resolve(process.env.PRESENCE_DB)
-    : path.join(process.cwd(), 'db', 'presence.db');
+  const explicit = env('DB');
+  // The file is still called presence.db: renaming it would point the running
+  // deployment at an empty database on the mounted volume. See lib/env.ts.
+  return explicit ? path.resolve(explicit) : path.join(process.cwd(), 'db', 'presence.db');
 }
 
 function open(): DB {
@@ -79,18 +81,18 @@ export function assertSchemaCurrent(db: DB): void {
 
 // Next.js dev mode re-evaluates modules on every hot reload. Cache the handle
 // on globalThis so we do not leak a file descriptor per edit.
-const globalForDb = globalThis as unknown as { __presenceDb?: DB };
+const globalForDb = globalThis as unknown as { __humangateDb?: DB };
 
 export function getDb(): DB {
-  if (!globalForDb.__presenceDb) globalForDb.__presenceDb = open();
-  return globalForDb.__presenceDb;
+  if (!globalForDb.__humangateDb) globalForDb.__humangateDb = open();
+  return globalForDb.__humangateDb;
 }
 
 /** Re-open from scratch. Used by `db/reset.ts` and the dev reset route. */
 export function closeDb(): void {
-  if (globalForDb.__presenceDb) {
-    globalForDb.__presenceDb.close();
-    globalForDb.__presenceDb = undefined;
+  if (globalForDb.__humangateDb) {
+    globalForDb.__humangateDb.close();
+    globalForDb.__humangateDb = undefined;
   }
 }
 

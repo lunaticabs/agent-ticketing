@@ -101,7 +101,7 @@ function stub(path: string, body: unknown, status = 200): void {
 /** Shape of `GET /api/health`. Notably: no `queue`, no `inbound`, no `grants`. */
 const HEALTH = {
   ok: true,
-  service: 'presence',
+  service: 'humangate',
   environment: 'sandbox',
   idp: {
     mode: 'local',

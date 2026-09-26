@@ -20,7 +20,7 @@
 import { getDb, nowMs } from './db';
 import { newId } from './ids';
 import { audit } from './audit';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 
 export type GrantScope = 'vip:skip_queue';
 
@@ -73,7 +73,7 @@ export function issueGrant(input: {
 
 export function revokeGrant(id: string): GrantRow {
   const grant = getGrant(id);
-  if (!grant) throw new PresenceError('grant_not_found', `no grant ${id}`);
+  if (!grant) throw new HumanGateError('grant_not_found', `no grant ${id}`);
   const at = nowMs();
   getDb().prepare(`UPDATE grant_ SET revoked_at = ? WHERE id = ?`).run(at, id);
   audit({

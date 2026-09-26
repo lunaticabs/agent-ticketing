@@ -17,7 +17,7 @@
  * evidence rather than narration.
  */
 import { getDb } from './db';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 import { audit } from './audit';
 import { consumeProof } from './consume';
 import { listApprovals, verifyApproval } from './approval';
@@ -56,14 +56,14 @@ export interface AttackOutcome {
  */
 export async function attackReplay(eventId?: string): Promise<AttackOutcome> {
   const event = eventId ? getEvent(eventId) : primaryEvent();
-  if (!event) throw new PresenceError('event_not_found', 'no event');
+  if (!event) throw new HumanGateError('event_not_found', 'no event');
 
   const spent = listApprovals({ eventId: event.id, limit: 50 }).find(
     (a) => a.state === 'CONSUMED' && a.kind === 'purchase',
   );
 
   if (!spent) {
-    throw new PresenceError(
+    throw new HumanGateError(
       'bad_request',
       'there is no consumed purchase approval to replay yet — claim a slot first',
       { httpStatus: 400, hint: 'Run demo beat 2, then press this button.' },
@@ -84,7 +84,7 @@ export async function attackReplay(eventId?: string): Promise<AttackOutcome> {
     gateCode = 'NOT_BLOCKED';
     gateMessage = 'the gate accepted a spent approval — this is a bug';
   } catch (err) {
-    gateCode = err instanceof PresenceError ? err.code : 'internal_error';
+    gateCode = err instanceof HumanGateError ? err.code : 'internal_error';
     gateMessage = err instanceof Error ? err.message : String(err);
   }
 
@@ -107,7 +107,7 @@ export async function attackReplay(eventId?: string): Promise<AttackOutcome> {
       constraintCode = 'NOT_BLOCKED';
       constraintMessage = 'the nullifier was accepted twice — this is a bug';
     } catch (err) {
-      constraintCode = err instanceof PresenceError ? err.code : 'internal_error';
+      constraintCode = err instanceof HumanGateError ? err.code : 'internal_error';
       constraintMessage = err instanceof Error ? err.message : String(err);
     }
   }
@@ -167,14 +167,14 @@ export async function attackReplay(eventId?: string): Promise<AttackOutcome> {
  */
 export async function attackParameterTamper(eventId?: string): Promise<AttackOutcome> {
   const event = eventId ? getEvent(eventId) : primaryEvent();
-  if (!event) throw new PresenceError('event_not_found', 'no event');
+  if (!event) throw new HumanGateError('event_not_found', 'no event');
 
   const purchase = listApprovals({ eventId: event.id, limit: 50 }).find(
     (a) => a.kind === 'purchase' && (a.state === 'CONSUMED' || a.state === 'APPROVED'),
   );
 
   if (!purchase) {
-    throw new PresenceError(
+    throw new HumanGateError(
       'bad_request',
       'there is no purchase approval to tamper with yet — claim a slot first',
       { httpStatus: 400, hint: 'Run demo beat 2, then press this button.' },
@@ -273,7 +273,7 @@ export async function attackEnvironmentSwap(
   presented?: Record<string, unknown>,
 ): Promise<AttackOutcome> {
   const event = eventId ? getEvent(eventId) : primaryEvent();
-  if (!event) throw new PresenceError('event_not_found', 'no event');
+  if (!event) throw new HumanGateError('event_not_found', 'no event');
 
   const before = protectedActionFingerprint();
   const body = presented ?? { environment: 'production', proof: { ok: true } };
@@ -286,7 +286,7 @@ export async function attackEnvironmentSwap(
     guardClientSuppliedEnvironment(body);
     refusals.push({ guard: 'environment pin', code: 'NOT_BLOCKED', message: 'no environment was rejected' });
   } catch (err) {
-    const e = err as PresenceError;
+    const e = err as HumanGateError;
     refusals.push({ guard: 'environment pin', code: e.code, message: e.message });
   }
 
@@ -294,7 +294,7 @@ export async function attackEnvironmentSwap(
     guardForgedClientResult(body);
     refusals.push({ guard: 'forged client verdict', code: 'NOT_BLOCKED', message: 'no verdict was rejected' });
   } catch (err) {
-    const e = err as PresenceError;
+    const e = err as HumanGateError;
     refusals.push({ guard: 'forged client verdict', code: e.code, message: e.message });
   }
 
@@ -362,7 +362,7 @@ export async function runAllAttacks(eventId?: string): Promise<AttackOutcome[]> 
     try {
       results.push(await run(eventId));
     } catch (err) {
-      const e = err as PresenceError;
+      const e = err as HumanGateError;
       results.push({
         attack:
           run === attackReplay

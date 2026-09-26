@@ -25,7 +25,7 @@ export const GET = route(async () => {
 
   return json({
     ok: true,
-    service: 'presence',
+    service: 'humangate',
     environment: WORLDID_ENVIRONMENT,
     idp: {
       mode: idp.mode,

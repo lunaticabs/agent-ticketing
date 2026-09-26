@@ -100,7 +100,7 @@ export function ensureDemoEventIfMissing(): SeedResult | null {
     // A startup hook must never be the reason a deployment stops serving. The
     // banner and `/api/health` both report the state, so an operator finds out
     // there instead of from a container that will not boot.
-    console.error('[presence] could not ensure the demo event:', err);
+    console.error('[humangate] could not ensure the demo event:', err);
     return null;
   }
 }

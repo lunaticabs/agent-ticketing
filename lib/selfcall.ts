@@ -104,7 +104,7 @@ function localDispatcher(origin: string): Agent | null {
  *   3. **Otherwise, the configured public URL.** This is the case that matters
  *      in production: `0.0.0.0`, or a bare Host the proxy did not rewrite.
  *
- * `PRESENCE_PUBLIC_URL` is not imported for this: `publicBaseUrl()` already
+ * `HUMANGATE_PUBLIC_URL` is not imported for this: `publicBaseUrl()` already
  * derives the origin from `WORLDID_REDIRECT_URI`, the one value that cannot be
  * approximated.
  */
@@ -196,7 +196,7 @@ function explain(origin: string, cause: unknown): SelfCallError {
       `the server could not reach itself at ${origin}: the certificate is self-signed and ` +
         `nothing at ${LOCAL_CERT} was trusted for it.\n` +
         `Start the server with scripts/dev.sh (npm run dev) so the certificate exists, or ` +
-        `point PRESENCE_PUBLIC_URL at an origin with a real certificate.\n` +
+        `point HUMANGATE_PUBLIC_URL at an origin with a real certificate.\n` +
         `Underlying error: ${code}`,
       origin,
       cause,
@@ -254,7 +254,7 @@ export async function fetchOrigin(
  * a child we spawn ourselves gets exactly the environment we hand it.
  */
 export function selfCallEnv(origin: string): Record<string, string> {
-  const env: Record<string, string> = { PRESENCE_BASE_URL: origin };
+  const env: Record<string, string> = { HUMANGATE_BASE_URL: origin };
   if (origin.startsWith('https://') && isLoopback(origin) && fs.existsSync(LOCAL_CERT)) {
     if (!process.env.NODE_EXTRA_CA_CERTS) env.NODE_EXTRA_CA_CERTS = LOCAL_CERT;
   }

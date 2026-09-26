@@ -4,8 +4,10 @@ Every Markdown document in this repository lives here, with one exception: the
 root [`README.md`](../README.md), which is the project overview and the entry
 point for the code.
 
-Presence is a queueing and authorization gate for event slots, built for the
-World **"Best Use of World ID for Agents"** track at ETHGlobal Tokyo 2026.
+HumanGate is verifiable authorization middleware for AI agents: the agent does the
+work, but a human verified with World ID has to authorize the operation — bound to
+that operation, re-verified on the server, and consumed once. Built for the World
+**"Best Use of World ID for Agents"** track at ETHGlobal Tokyo 2026.
 
 ---
 

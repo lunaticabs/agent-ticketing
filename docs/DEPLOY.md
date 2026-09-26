@@ -1,4 +1,4 @@
-# Deploying Presence to a public URL
+# Deploying HumanGate to a public URL
 
 **For:** a hackathon demo that strangers can try on their phones.
 **Cost:** ~$3.19/month now, ~$3.69/month after Fly's 1 Oct 2026 price change
@@ -125,24 +125,57 @@ Run these once. Replace the three placeholder values; keep the line breaks.
 
 ```bash
 fly secrets set --app agent-ticket-demo \
-  PRESENCE_PUBLIC_URL="https://agent-ticket-demo.fly.dev" \
+  HUMANGATE_PUBLIC_URL="https://agent-ticket-demo.fly.dev" \
   WORLDID_REDIRECT_URI="https://agent-ticket-demo.fly.dev/api/auth/world/callback" \
   WORLDID_CLIENT_ID="<from the portal>" \
   WORLDID_CLIENT_SECRET="<from the portal>" \
-  PRESENCE_SIGNING_KEY="<openssl rand -base64 48>"
+  HUMANGATE_SIGNING_KEY="<openssl rand -base64 48>"
 ```
 
 Setting a secret restarts the machine, which is fine — the database is on the
 volume, so no state is lost.
 
-### Why `PRESENCE_PUBLIC_URL` is set here and not in `fly.toml`
+### Why `HUMANGATE_PUBLIC_URL` is set here and not in `fly.toml`
 
 `worldid/config.ts` treats `WORLDID_REDIRECT_URI` as authoritative and derives
-every other absolute URL from its origin. `PRESENCE_PUBLIC_URL` is only needed
+every other absolute URL from its origin. `HUMANGATE_PUBLIC_URL` is only needed
 when the two genuinely differ — behind a proxy, say. Here they agree, and setting
 both means `baseUrlConsistency()` checks them against each other at startup and
 `/api/health` reports the result. If they ever disagree, the app says so loudly
 rather than rendering consent links that open nothing.
+
+### The project was called Presence — the secrets may still say so
+
+The environment variables were renamed with the project, but a running
+deployment holds the old names in its secret store, and those cannot be changed
+in the same instant as a push. Every read goes through `lib/env.ts`, which
+resolves `HUMANGATE_*` first and falls back to `PRESENCE_*`, treating an empty
+value as absent under both. So the order below is safe at any point:
+
+```bash
+# 1. set the new names (the machine restarts; the database is on the volume)
+fly secrets set --app agent-ticket-demo \
+  HUMANGATE_PUBLIC_URL="https://agent-ticket-demo.fly.dev" \
+  HUMANGATE_SIGNING_KEY="<the same value as before>"
+
+# 2. confirm the app is healthy and the IdP mode is unchanged
+curl -s https://agent-ticket-demo.fly.dev/api/health | python3 -m json.tool
+
+# 3. then drop the old ones
+fly secrets unset --app agent-ticket-demo PRESENCE_PUBLIC_URL PRESENCE_SIGNING_KEY
+```
+
+Three things were deliberately **not** renamed, because each changes runtime
+state rather than configuration, and none of them is visible to a user:
+
+| Kept | Why |
+|---|---|
+| `presence.db` (the file, and `HUMANGATE_DB`'s default) | A renamed file is an empty database on a mounted volume: the demo would come up with no event and no slots. |
+| the `presence_data` Fly volume | Renaming a volume means creating a new one and copying the database across, during a demo. |
+| the `presence_session` / `presence_sandbox` cookies | Renaming logs out every live visitor and hands each of them a fresh private event. |
+
+`tests/env-rename.test.ts` pins the precedence rule and asserts that the
+database file keeps its name whatever the variable is called.
 
 ---
 

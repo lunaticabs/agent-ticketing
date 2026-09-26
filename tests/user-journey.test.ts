@@ -32,7 +32,7 @@ import { calls, navigationAttempts, render, resetNetwork, stub, teardown } from 
 
 const HEALTH = {
   ok: true,
-  service: 'presence',
+  service: 'humangate',
   environment: 'sandbox',
   idp: {
     mode: 'local',

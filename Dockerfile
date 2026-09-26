@@ -1,5 +1,5 @@
 # ============================================================================
-#  Presence — one container, one volume, one always-on machine
+#  HumanGate — one container, one volume, one always-on machine
 # ============================================================================
 #
 # ── Why this image looks the way it does ───────────────────────────────────
@@ -26,7 +26,7 @@
 #     exactly the kind of dependency tracing gets wrong. Copying the built
 #     `node_modules` wholesale is the boring version that cannot break.
 #
-#   * Secrets are NOT baked in. `PRESENCE_SIGNING_KEY`, `WORLDID_CLIENT_SECRET`
+#   * Secrets are NOT baked in. `HUMANGATE_SIGNING_KEY`, `WORLDID_CLIENT_SECRET`
 #     and the rest arrive at run time (`fly secrets set`). RED LINE 2 depends on
 #     that: a secret in a layer is a secret in every copy of the image.
 #
@@ -84,7 +84,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
-    PRESENCE_DB=/data/presence.db
+    HUMANGATE_DB=/data/presence.db
 
 COPY package.json package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules

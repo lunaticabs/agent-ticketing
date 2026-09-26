@@ -23,7 +23,7 @@
 import { getDb, nowMs, tx } from './db';
 import { newId, randomToken, sha256Hex } from './ids';
 import { audit } from './audit';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 import { getEvent, type EventRow } from './humans';
 import { activeGrant } from './grants';
 
@@ -65,7 +65,7 @@ export function joinQueue(
   actor: 'human' | 'agent' = 'human',
 ): JoinResult {
   const event = getEvent(eventId);
-  if (!event) throw new PresenceError('event_not_found', `no event ${eventId}`);
+  if (!event) throw new HumanGateError('event_not_found', `no event ${eventId}`);
 
   const existing = getDb()
     .prepare(`SELECT * FROM queue_entry WHERE event_id = ? AND continuity_id = ?`)
@@ -81,7 +81,7 @@ export function joinQueue(
   }
 
   if (event.lottery_drawn_at !== null) {
-    throw new PresenceError('queue_closed', 'the draw for this event has already been settled', {
+    throw new HumanGateError('queue_closed', 'the draw for this event has already been settled', {
       invariant: 'RED LINE 10 — the window closes before the draw, so late arrivals cannot matter',
       details: { eventId, drawnAt: event.lottery_drawn_at },
       hint:
@@ -171,7 +171,7 @@ export interface DrawResult {
 export function settleLottery(eventId: string): DrawResult {
   return tx((db) => {
     const event = getEvent(eventId);
-    if (!event) throw new PresenceError('event_not_found', `no event ${eventId}`);
+    if (!event) throw new HumanGateError('event_not_found', `no event ${eventId}`);
 
     if (event.lottery_drawn_at !== null) {
       const existing = listQueue(eventId).map((e) => ({

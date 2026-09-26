@@ -26,7 +26,7 @@
  */
 import type { DB } from './db';
 import { getDb, nowMs } from './db';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 
 export interface ConsumeInput {
   nullifier: string;
@@ -74,7 +74,7 @@ export function consumeProof(db: DB, input: ConsumeInput): void {
     const existing = lookup(db, input.nullifier);
 
     if (code.includes('PRIMARYKEY') || (existing && existing.nullifier === input.nullifier)) {
-      throw new PresenceError(
+      throw new HumanGateError(
         'proof_replay_detected',
         'this proof has already been consumed — a proof is single-use',
         {
@@ -85,7 +85,7 @@ export function consumeProof(db: DB, input: ConsumeInput): void {
       );
     }
 
-    throw new PresenceError(
+    throw new HumanGateError(
       'already_owns_entitlement',
       'this human already exercised this action — one person, one entitlement per action',
       {

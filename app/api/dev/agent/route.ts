@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { json, route, readJson } from '@/lib/api';
 import { assertDevRoutes } from '@/lib/devmode';
-import { PresenceError } from '@/lib/errors';
+import { HumanGateError } from '@/lib/errors';
 import { ensureSyntheticHuman } from '@/lib/humans';
 import { resolveCaller } from '@/lib/session';
 import { idpMode } from '@/worldid/config';
@@ -60,7 +60,7 @@ function actingHuman(req: NextRequest, body: Record<string, unknown>): string {
     return ensureSyntheticHuman(handle.slice(0, 40)).continuity_id;
   }
 
-  throw new PresenceError('not_authenticated', 'sign in with World ID before handing the job to an agent', {
+  throw new HumanGateError('not_authenticated', 'sign in with World ID before handing the job to an agent', {
     httpStatus: 401,
     invariant: 'RED LINE 1 — the agent acts for a verified human, and for nobody else',
     hint: 'The human has to be the one who can answer the consent prompt, or the gate will refuse the result.',

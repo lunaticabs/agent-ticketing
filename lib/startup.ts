@@ -86,10 +86,10 @@ export function printStartupBanner(): void {
   if (!urls.consistent) {
     lines.push('  ⚠️  URL MISMATCH — links the app renders will not open');
     lines.push(`      ${urls.detail}`);
-    lines.push('      PRESENCE_PUBLIC_URL is what consent links are built');
+    lines.push('      HUMANGATE_PUBLIC_URL is what consent links are built');
     lines.push('      from; WORLDID_REDIRECT_URI is what the IdP sends the browser back');
     lines.push('      to. They must share an origin.');
-    lines.push(`      Easiest fix: drop PRESENCE_PUBLIC_URL and let it derive from the`);
+    lines.push(`      Easiest fix: drop HUMANGATE_PUBLIC_URL and let it derive from the`);
     lines.push('      redirect URI, or set it to that origin.');
     lines.push('');
   }
@@ -125,7 +125,7 @@ export function printStartupBanner(): void {
   }
 
   if (!hasExplicitSigningKey()) {
-    lines.push('  ⚠️  PRESENCE_SIGNING_KEY is unset; using a deterministic development key.');
+    lines.push('  ⚠️  HUMANGATE_SIGNING_KEY is unset; using a deterministic development key.');
     lines.push('      Sessions and local assertions are forgeable by anyone with the source.');
     lines.push('');
   }

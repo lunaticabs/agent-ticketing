@@ -234,7 +234,7 @@ async function getText(url: string): Promise<string> {
 
 async function main(): Promise<void> {
   console.log('');
-  console.log('  PRESENCE · Day-0 spike against the live sandbox IdP');
+  console.log('  HUMANGATE · Day-0 spike against the live sandbox IdP');
   console.log(`  issuer: ${ISSUER}`);
   console.log(`  time:   ${new Date().toISOString()}`);
   console.log(`  ${'─'.repeat(90)}`);

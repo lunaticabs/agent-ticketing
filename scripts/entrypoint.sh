@@ -16,17 +16,21 @@
 # of an audience, the second is a deploy that says so.
 set -euo pipefail
 
-DB="${PRESENCE_DB:-/data/presence.db}"
+# `PRESENCE_DB` is the legacy name (the project shipped as Presence). It still
+# resolves, so a deployment whose secrets have not been rotated yet finds its
+# database — the *path* must not change either, or the app starts against an
+# empty file on the volume. See lib/env.ts.
+DB="${HUMANGATE_DB:-${PRESENCE_DB:-/data/presence.db}}"
 DATA_DIR="$(dirname "$DB")"
 
-echo "[presence] database: $DB"
+echo "[humangate] database: $DB"
 mkdir -p "$DATA_DIR"
 if [[ ! -w "$DATA_DIR" ]]; then
-  echo "[presence] FATAL: $DATA_DIR is not writable." >&2
-  echo "[presence]        On Fly: fly volumes create presence_data -r <region> -s 1" >&2
-  echo "[presence]        and check the [[mounts]] block in fly.toml." >&2
+  echo "[humangate] FATAL: $DATA_DIR is not writable." >&2
+  echo "[humangate]        On Fly: fly volumes create presence_data -r <region> -s 1" >&2
+  echo "[humangate]        and check the [[mounts]] block in fly.toml." >&2
   exit 1
 fi
 
-echo "[presence] starting next on ${HOSTNAME:-0.0.0.0}:${PORT:-3000}"
+echo "[humangate] starting next on ${HOSTNAME:-0.0.0.0}:${PORT:-3000}"
 exec node ./node_modules/next/dist/bin/next start -H "${HOSTNAME:-0.0.0.0}" -p "${PORT:-3000}"

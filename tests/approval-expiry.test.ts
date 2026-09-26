@@ -16,13 +16,13 @@ import { joinQueue, settleLottery } from '../lib/queue';
 import { ensureSlots, listSlots, sweep } from '../lib/slots';
 import { openApprovalViews } from '../lib/approval';
 import { requestClaimApproval } from '../lib/gate';
-import { PresenceError } from '../lib/errors';
+import { HumanGateError } from '../lib/errors';
 
 async function refuses(code: string, fn: () => unknown | Promise<unknown>): Promise<void> {
   try {
     await fn();
   } catch (err) {
-    assert.equal((err as PresenceError).code, code, `expected refusal "${code}"`);
+    assert.equal((err as HumanGateError).code, code, `expected refusal "${code}"`);
     return;
   }
   assert.fail(`expected a refusal with code "${code}", but the call succeeded`);

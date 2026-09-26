@@ -25,7 +25,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { freshEvent, getDb, human, purchase, queueAndDraw, reset } from './harness';
-import { PresenceError } from '../lib/errors';
+import { HumanGateError } from '../lib/errors';
 import { requestClaimApproval } from '../lib/gate';
 import { allocationOutcome } from '../lib/mcpagent';
 import { syncApproval } from '../lib/approval';
@@ -126,11 +126,11 @@ test('W-6 — asking twice yields one pending approval and a refusal that names 
   assert.equal(pendingCount(event.id, alice), 1, 'the first request is pending');
 
   // This is what a second button press did before the fix: minted another one.
-  let refusal: PresenceError | null = null;
+  let refusal: HumanGateError | null = null;
   try {
     await requestClaimApproval(event.id, alice);
   } catch (err) {
-    refusal = err as PresenceError;
+    refusal = err as HumanGateError;
   }
 
   assert.ok(refusal, 'a second request must not silently succeed');
@@ -160,11 +160,11 @@ test('W-7 — once the outstanding approval is answered, asking again is allowed
   await purchase(event.id, bob);
   assert.equal(pendingCount(event.id, bob), 0, 'nothing is left pending after a completed purchase');
 
-  let refusal: PresenceError | null = null;
+  let refusal: HumanGateError | null = null;
   try {
     await requestClaimApproval(event.id, bob);
   } catch (err) {
-    refusal = err as PresenceError;
+    refusal = err as HumanGateError;
   }
   assert.ok(refusal, 'a human who already holds a slot cannot buy a second');
   assert.equal(

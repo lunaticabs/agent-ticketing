@@ -24,7 +24,7 @@ import { NextRequest } from 'next/server';
 import { selfOrigin } from '../lib/selfcall';
 
 function withEnv(vars: Record<string, string | undefined>, fn: () => void): void {
-  const keys = ['PRESENCE_PUBLIC_URL', 'WORLDID_REDIRECT_URI'] as const;
+  const keys = ['HUMANGATE_PUBLIC_URL', 'WORLDID_REDIRECT_URI'] as const;
   const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const key of keys) {
     const value = vars[key];
@@ -50,13 +50,13 @@ function proxied(url: string, headers: Record<string, string> = {}): NextRequest
 }
 
 test('S-1 — the wildcard binding never escapes, even with no headers at all', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: PUBLIC }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC }, () => {
     assert.equal(selfOrigin(proxied('https://0.0.0.0:3000/api/dev/agent')), PUBLIC);
   });
 });
 
 test('S-2 — a proxy-supplied host is used, with the caller’s scheme', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: PUBLIC }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC }, () => {
     assert.equal(
       selfOrigin(
         proxied('https://0.0.0.0:3000/api/dev/agent', {
@@ -71,7 +71,7 @@ test('S-2 — a proxy-supplied host is used, with the caller’s scheme', () => 
 });
 
 test('S-3 — only the first value of a multi-valued proxy header is read', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: PUBLIC }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC }, () => {
     assert.equal(
       selfOrigin(
         proxied('https://0.0.0.0:3000/x', {
@@ -85,7 +85,7 @@ test('S-3 — only the first value of a multi-valued proxy header is read', () =
 });
 
 test('S-4 — loopback is normalised to localhost, keeping the certificate path alive', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: PUBLIC }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC }, () => {
     // `selfCallEnv` attaches NODE_EXTRA_CA_CERTS for loopback origins only, so
     // this must stay loopback — replacing it with the public URL would send a
     // local demo through the internet and break its self-signed certificate.
@@ -96,22 +96,22 @@ test('S-4 — loopback is normalised to localhost, keeping the certificate path 
 });
 
 test('S-5 — a literal wildcard host in the Host header is not dialled', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: PUBLIC }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC }, () => {
     assert.equal(selfOrigin(proxied('https://0.0.0.0:3000/x', { 'x-forwarded-host': '0.0.0.0:3000' })), PUBLIC);
   });
 });
 
 test('S-6 — with no configuration at all, a wildcard becomes localhost rather than nothing', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: undefined, WORLDID_REDIRECT_URI: undefined }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: undefined, WORLDID_REDIRECT_URI: undefined }, () => {
     // The port is carried over: this is `npm run dev:http` on a wildcard bind in
     // a container with no public URL, and localhost:3000 is where it is.
     assert.equal(selfOrigin(proxied('https://0.0.0.0:3000/x', { 'x-forwarded-host': '0.0.0.0:3000' })), 'http://localhost:3000');
   });
 });
 
-test('S-7 — the redirect URI answers when PRESENCE_PUBLIC_URL is unset, as on Fly', () => {
+test('S-7 — the redirect URI answers when HUMANGATE_PUBLIC_URL is unset, as on Fly', () => {
   withEnv(
-    { PRESENCE_PUBLIC_URL: undefined, WORLDID_REDIRECT_URI: `${PUBLIC}/api/auth/world/callback` },
+    { HUMANGATE_PUBLIC_URL: undefined, WORLDID_REDIRECT_URI: `${PUBLIC}/api/auth/world/callback` },
     () => {
       assert.equal(selfOrigin(proxied('https://0.0.0.0:3000/x')), PUBLIC);
     },
@@ -119,7 +119,7 @@ test('S-7 — the redirect URI answers when PRESENCE_PUBLIC_URL is unset, as on 
 });
 
 test('S-8 — plain HTTP on a real host stays HTTP', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: PUBLIC }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC }, () => {
     // A phone on the same wifi hitting `npm run dev:http` by IP. Hardcoding
     // `https` here would break the very flow this function exists to serve.
     assert.equal(selfOrigin(proxied('http://192.168.1.20:3000/api/x')), 'http://192.168.1.20:3000');
@@ -127,7 +127,7 @@ test('S-8 — plain HTTP on a real host stays HTTP', () => {
 });
 
 test('S-9 — a garbage host falls back to configuration instead of throwing', () => {
-  withEnv({ PRESENCE_PUBLIC_URL: PUBLIC }, () => {
+  withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC }, () => {
     assert.equal(selfOrigin(proxied('https://0.0.0.0:3000/x', { 'x-forwarded-host': 'not a host!!' })), PUBLIC);
     assert.equal(selfOrigin(proxied('https://0.0.0.0:3000/x', { 'x-forwarded-host': '' })), PUBLIC);
   });

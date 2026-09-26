@@ -30,7 +30,7 @@
  */
 import { getDb, nowMs, tx } from './db';
 import { audit } from './audit';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 import { getEvent, type EventRow } from './humans';
 import { activeGrant } from './grants';
 // One-way dependency: queue.ts knows nothing about slots.
@@ -97,7 +97,7 @@ export interface AllocationEvent {
 export function allocateAvailable(eventId: string): AllocationEvent[] {
   return tx((db) => {
     const event = getEvent(eventId);
-    if (!event) throw new PresenceError('event_not_found', `no event ${eventId}`);
+    if (!event) throw new HumanGateError('event_not_found', `no event ${eventId}`);
 
     // `total_slots` is the event's capacity and it must bound allocations, even
     // when more slot ROWS exist than the event declares. They can diverge — the
@@ -410,7 +410,7 @@ export function confirmSlot(
     .run(continuityId, nowMs(), slotId, continuityId).changes;
 
   if (!changed) {
-    throw new PresenceError('slot_not_available', 'the slot is no longer allocated to you', {
+    throw new HumanGateError('slot_not_available', 'the slot is no longer allocated to you', {
       invariant: 'RED LINE 7/state machine — allocation is revoked the moment the window closes',
       details: { slotId, continuityId },
     });

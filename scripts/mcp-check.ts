@@ -125,14 +125,14 @@ async function connectMcp(token: string): Promise<Client> {
     args: ['tsx', 'mcp/server.ts'],
     env: {
       ...process.env,
-      PRESENCE_BASE_URL: BASE,
-      PRESENCE_AGENT_TOKEN: token,
-      ...(EVENT ? { PRESENCE_EVENT_ID: EVENT } : {}),
+      HUMANGATE_BASE_URL: BASE,
+      HUMANGATE_AGENT_TOKEN: token,
+      ...(EVENT ? { HUMANGATE_EVENT_ID: EVENT } : {}),
     } as Record<string, string>,
     // The server logs to stderr by design; keep the check output clean.
     stderr: 'ignore',
   });
-  const client = new Client({ name: 'presence-check', version: '1.0.0' }, { capabilities: {} });
+  const client = new Client({ name: 'humangate-check', version: '1.0.0' }, { capabilities: {} });
   await client.connect(transport);
   return client;
 }

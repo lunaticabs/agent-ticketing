@@ -31,7 +31,7 @@
 import { getDb, nowMs, tx } from './db';
 import { newId } from './ids';
 import { audit } from './audit';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 import { ensureSyntheticHuman } from './humans';
 import { primaryEvent, getEvent, updateEvent } from './humans';
 import { ensureSlots, sweep } from './slots';
@@ -45,7 +45,7 @@ export function assertDevRoutes(): void {
   if (process.env.ENABLE_DEV_ROUTES !== '1') {
     // Same shape as a genuinely missing route: the demo surface must be
     // indistinguishable from "not deployed" when it is switched off.
-    throw new PresenceError('dev_routes_disabled', 'Not Found', { httpStatus: 404 });
+    throw new HumanGateError('dev_routes_disabled', 'Not Found', { httpStatus: 404 });
   }
 }
 
@@ -218,7 +218,7 @@ export function runArmyQueueDemo(opts: { eventId?: string; accounts?: number; hu
 
   const army = buildArmy({ accounts, humans, eventId: opts.eventId });
   const event = opts.eventId ? getEvent(opts.eventId) : primaryEvent();
-  if (!event) throw new PresenceError('event_not_found', 'no event');
+  if (!event) throw new HumanGateError('event_not_found', 'no event');
 
   // A fresh window, or the draw would already have closed and every join would
   // be refused for the wrong reason. Scoped to this event: on the public site
@@ -332,7 +332,7 @@ export function resetDemo(opts: { eventId?: string } = {}): { reset: true; event
     // needs inventory), and leaving those extra rows behind would let a later
     // run allocate more slots than the event declares.
     const event = target ? getEvent(target) : primaryEvent();
-    if (!event) throw new PresenceError('event_not_found', `no event ${target}`);
+    if (!event) throw new HumanGateError('event_not_found', `no event ${target}`);
     db.prepare(`DELETE FROM slot WHERE event_id = ?`).run(event.id);
     db.prepare(
       `UPDATE event SET lottery_drawn_at = NULL, lottery_seed = NULL WHERE id = ?`,
@@ -370,7 +370,7 @@ export function fastForward(opts: { eventId?: string; deferAllocations?: boolean
 } {
   assertDevRoutes();
   const event = opts.eventId ? getEvent(opts.eventId) : primaryEvent();
-  if (!event) throw new PresenceError('event_not_found', 'no event');
+  if (!event) throw new HumanGateError('event_not_found', 'no event');
 
   // Default FALSE, and that default is the fix for a real bug.
   //
@@ -422,7 +422,7 @@ export function primeScenario(opts: {
 } = {}): { eventId: string; joined: number; allocated: number } {
   assertDevRoutes();
   const event = opts.eventId ? getEvent(opts.eventId) : primaryEvent();
-  if (!event) throw new PresenceError('event_not_found', 'no event');
+  if (!event) throw new HumanGateError('event_not_found', 'no event');
   const humans = Math.max(1, Math.min(opts.humans ?? 6, 40));
 
   // Two things this has to be on the public site, and was not on the stage:

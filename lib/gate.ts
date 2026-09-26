@@ -32,7 +32,7 @@
  */
 import { getDb, nowMs, tx } from './db';
 import { audit } from './audit';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 import { getEvent } from './humans';
 import { consumeProof } from './consume';
 import {
@@ -83,7 +83,7 @@ export function purchaseSignal(eventId: string, continuityId: string): string {
  * identity linking, and its nullifier is deliberately never consumed.
  */
 export function linkAction(): string {
-  return 'link_identity:presence';
+  return 'link_identity:humangate';
 }
 
 /** Each link attempt gets its own signal, so link proofs are not interchangeable. */
@@ -108,7 +108,7 @@ export interface ClaimTarget {
  */
 export function describeClaimTarget(eventId: string, continuityId: string): ClaimTarget {
   const event = getEvent(eventId);
-  if (!event) throw new PresenceError('event_not_found', `no event ${eventId}`);
+  if (!event) throw new HumanGateError('event_not_found', `no event ${eventId}`);
 
   sweep(eventId);
 
@@ -118,7 +118,7 @@ export function describeClaimTarget(eventId: string, continuityId: string): Clai
     if (slot.approval_deadline === null) {
       // The schema's CHECK makes this unreachable; assert anyway rather than
       // silently treating a deadline-less allocation as claimable forever.
-      throw new PresenceError('internal_error', 'allocated slot is missing its approval deadline');
+      throw new HumanGateError('internal_error', 'allocated slot is missing its approval deadline');
     }
     return {
       slotId: slot.id,
@@ -137,14 +137,14 @@ export function describeClaimTarget(eventId: string, continuityId: string): Clai
     )
     .all(eventId, continuityId) as SlotRow[];
   if (held.length > 0) {
-    throw new PresenceError('already_owns_entitlement', 'you already hold a confirmed slot', {
+    throw new HumanGateError('already_owns_entitlement', 'you already hold a confirmed slot', {
       invariant: 'RED LINE 1 — action bound to the purchase gives one slot per human per event',
       details: { slotId: held[0].id },
     });
   }
 
   if (hasBeenServed(eventId, continuityId)) {
-    throw new PresenceError(
+    throw new HumanGateError(
       'deferred_to_next_candidate',
       'your approval window closed, so this slot was passed to the next candidate in the draw',
       {
@@ -158,12 +158,12 @@ export function describeClaimTarget(eventId: string, continuityId: string): Clai
   }
 
   if (event.lottery_drawn_at === null) {
-    throw new PresenceError('no_slot_allocated', 'the draw for this event has not been settled yet', {
+    throw new HumanGateError('no_slot_allocated', 'the draw for this event has not been settled yet', {
       details: { eventId, lotteryMode: event.lottery_mode },
     });
   }
 
-  throw new PresenceError(
+  throw new HumanGateError(
     'no_slot_allocated',
     'you are in the queue but the draw did not reach you — every slot is spoken for',
     { details: { eventId } },
@@ -210,7 +210,7 @@ export async function requestClaimApproval(
 
   const outstanding = pendingApprovalFor(eventId, continuityId, target.slotId);
   if (outstanding) {
-    throw new PresenceError(
+    throw new HumanGateError(
       'approval_already_pending',
       'you already have an outstanding authorization for this slot — answer it on your device, or wait for it to expire',
       {
@@ -332,7 +332,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
         note: 'slot.claim was called without an approval — tool inputs are LLM-generated and prove nothing',
       },
     });
-    throw new PresenceError(
+    throw new HumanGateError(
       'approval_required',
       'this action requires a human authorization; a proof of authorization must accompany the call',
       {
@@ -350,7 +350,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
 
   const approval = resolveApprovalRef(input.approvalRef);
   if (!approval) {
-    throw new PresenceError('approval_not_found', 'the presented approval is not known to this server', {
+    throw new HumanGateError('approval_not_found', 'the presented approval is not known to this server', {
       invariant: 'RED LINE 3 — an approval is only real if the server issued it',
       details: { presented: truncate(input.approvalRef) },
     });
@@ -358,7 +358,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
 
   // The approval must belong to the human making the claim, and to this slot.
   if (approval.continuity_id !== continuityId) {
-    throw new PresenceError(
+    throw new HumanGateError(
       'approval_identity_mismatch',
       'this approval was issued to a different human',
       {
@@ -368,7 +368,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
     );
   }
   if (approval.slot_id && approval.slot_id !== target.slotId) {
-    throw new PresenceError('approval_signal_mismatch', 'this approval was issued for a different slot', {
+    throw new HumanGateError('approval_signal_mismatch', 'this approval was issued for a different slot', {
       invariant: 'RED LINE 6 — the approval is bound to (action, signal)',
       details: { boundTo: approval.slot_id, expected: target.slotId },
     });
@@ -385,7 +385,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
 
   if (!verified.ok) {
     rejectApproval(approval.id, verified.code, verified.message);
-    throw new PresenceError(mapVerifyCode(verified.code), verified.message, {
+    throw new HumanGateError(mapVerifyCode(verified.code), verified.message, {
       invariant: 'RED LINE 3/5/6 — the server re-verifies every binding before acting',
       details: { approvalId: approval.id, reason: verified.reason },
     });
@@ -393,7 +393,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
 
   if (verified.continuityId !== continuityId) {
     rejectApproval(approval.id, 'approval_identity_mismatch', 'proof belongs to another human');
-    throw new PresenceError('approval_identity_mismatch', 'the proof belongs to a different human', {
+    throw new HumanGateError('approval_identity_mismatch', 'the proof belongs to a different human', {
       invariant: 'RED LINE 8',
       details: { proofHuman: verified.continuityId, caller: continuityId },
     });

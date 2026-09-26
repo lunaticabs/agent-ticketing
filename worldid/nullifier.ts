@@ -47,7 +47,7 @@
 import { sha256Hex } from '../lib/ids';
 
 /** Domain separator so this hash can never collide with another system's. */
-const DOMAIN = 'presence/v1/nullifier';
+const DOMAIN = 'humangate/v1/nullifier';
 
 /**
  * Stable per-service identifier for a human.

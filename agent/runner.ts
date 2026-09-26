@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * ============================================================================
- *  Presence agent runner (T-3.1)
+ *  HumanGate agent runner (T-3.1)
  * ============================================================================
  *
  *   npm run agent
@@ -31,6 +31,7 @@
  * exactly what the track's rule 3 is about.
  */
 import { AgentClient, AgentHttpError, type Refusal } from './client';
+import { env } from '../lib/env';
 
 // ── Terminal output ─────────────────────────────────────────────────────────
 // The terminal is the demo's second visual focus, so the status line has to be
@@ -73,7 +74,7 @@ const say = {
 };
 
 function banner(): void {
-  const title = 'PRESENCE · agent runner';
+  const title = 'HUMANGATE · agent runner';
   console.log('');
   console.log(`  ${C.bold}${title}${C.reset}`);
   console.log(`  ${C.dim}${'─'.repeat(W)}${C.reset}`);
@@ -97,9 +98,9 @@ function parseArgs(argv: string[]): Args {
     return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
   };
   return {
-    base: get('--base', process.env.PRESENCE_BASE_URL ?? 'http://localhost:3000'),
+    base: get('--base', env('BASE_URL') ?? 'http://localhost:3000'),
     handle: get('--handle', `agent-${Math.random().toString(36).slice(2, 7)}`),
-    label: get('--label', 'presence-agent'),
+    label: get('--label', 'humangate-agent'),
     approvalTimeoutSec: Number(get('--timeout', '150')),
     once: argv.includes('--once'),
   };

@@ -60,12 +60,12 @@ if [[ "$SCHEME" == "http" ]]; then
   # No TLS anywhere in this configuration, so every absolute URL the app builds
   # must be http too. Leaving an https redirect URI set while serving http is the
   # exact mismatch this script exists to prevent.
-  export PRESENCE_PUBLIC_URL="${PRESENCE_PUBLIC_URL:-http://localhost:$PORT}"
+  export HUMANGATE_PUBLIC_URL="${HUMANGATE_PUBLIC_URL:-http://localhost:$PORT}"
   unset WORLDID_REDIRECT_URI_HTTPS 2>/dev/null || true
 
   cat <<BANNER
 
-  PRESENCE · http dev server
+  HUMANGATE · http dev server
   ────────────────────────────────────────────────────────────────
   url            http://localhost:$PORT
 
@@ -118,15 +118,15 @@ else
 fi
 
 # Every absolute URL the app builds — consent links, transfer links, the OIDC
-# redirect_uri — must share one origin. `PRESENCE_PUBLIC_URL` is only forced here
+# redirect_uri — must share one origin. `HUMANGATE_PUBLIC_URL` is only forced here
 # when nothing has declared one; when WORLDID_REDIRECT_URI is set the app derives
-# the origin from it instead, so a stale PRESENCE_PUBLIC_URL cannot desync them.
+# the origin from it instead, so a stale HUMANGATE_PUBLIC_URL cannot desync them.
 if [[ -z "${WORLDID_REDIRECT_URI:-}" ]]; then
   export WORLDID_REDIRECT_URI="https://localhost:$PORT/api/auth/world/callback"
 fi
 
 echo
-echo "  PRESENCE · https dev server"
+echo "  HUMANGATE · https dev server"
 echo "  ────────────────────────────────────────────────────────────────"
 echo "  url            https://localhost:$PORT"
 echo "  redirect URI   $WORLDID_REDIRECT_URI"

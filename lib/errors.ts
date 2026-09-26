@@ -4,7 +4,7 @@
  * T-7.1 requires every failure path to produce a reason that is readable by
  * both a model and a front-end, and that the protected action provably did not
  * happen. So: no thrown strings, no bare `Error`. Every refusal is a
- * `PresenceError` with a stable machine code, a human sentence, and the
+ * `HumanGateError` with a stable machine code, a human sentence, and the
  * context needed to render it on the board.
  */
 
@@ -67,7 +67,7 @@ export interface ReasonBody {
   hint?: string;
 }
 
-export class PresenceError extends Error {
+export class HumanGateError extends Error {
   readonly code: ReasonCode;
   readonly httpStatus: number;
   readonly invariant?: string;
@@ -85,7 +85,7 @@ export class PresenceError extends Error {
     } = {},
   ) {
     super(message);
-    this.name = 'PresenceError';
+    this.name = 'HumanGateError';
     this.code = code;
     this.httpStatus = opts.httpStatus ?? defaultStatus(code);
     this.invariant = opts.invariant;
@@ -147,9 +147,9 @@ function defaultStatus(code: ReasonCode): number {
 export function refuse(
   code: ReasonCode,
   message: string,
-  opts?: ConstructorParameters<typeof PresenceError>[2],
+  opts?: ConstructorParameters<typeof HumanGateError>[2],
 ): never {
-  throw new PresenceError(code, message, opts);
+  throw new HumanGateError(code, message, opts);
 }
 
 /** Feature flags referenced from several layers. */

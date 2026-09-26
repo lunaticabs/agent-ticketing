@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 /**
  * ============================================================================
- *  Presence MCP server (T-3.4)
+ *  HumanGate MCP server (T-3.4)
  * ============================================================================
  *
  *   npm run mcp                      # stdio, for any MCP client
- *   PRESENCE_AGENT_TOKEN=... npm run mcp
+ *   HUMANGATE_AGENT_TOKEN=... npm run mcp
  *
  * Why this exists: `agent/runner.ts` proves the flow works, but it is *our*
  * client. This exposes the same three operations over MCP so any agent host can
@@ -49,9 +49,10 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { AgentClient, AgentHttpError } from '../agent/client';
+import { env } from '../lib/env';
 
-const BASE = process.env.PRESENCE_BASE_URL?.trim() || 'http://localhost:3000';
-const TOKEN = process.env.PRESENCE_AGENT_TOKEN?.trim() || '';
+const BASE = env('BASE_URL') ?? 'http://localhost:3000';
+const TOKEN = env('AGENT_TOKEN') ?? '';
 /**
  * The event this agent acts in.
  *
@@ -62,7 +63,7 @@ const TOKEN = process.env.PRESENCE_AGENT_TOKEN?.trim() || '';
  * defaults to it. Unset (the terminal, `npm run mcp` by hand), the server
  * resolves the event itself, which is what it did before private events existed.
  */
-const EVENT_ID = process.env.PRESENCE_EVENT_ID?.trim() || '';
+const EVENT_ID = env('EVENT_ID') ?? '';
 
 const client = new AgentClient(BASE);
 if (TOKEN) client.setBearer(TOKEN);
@@ -107,7 +108,7 @@ function refusal(err: unknown): { content: { type: 'text'; text: string }[]; isE
             ok: false,
             code: 'transport_error',
             message: err instanceof Error ? err.message : String(err),
-            hint: `Is the Presence server running at ${BASE}? Start it with: ENABLE_DEV_ROUTES=1 npm run dev`,
+            hint: `Is the HumanGate server running at ${BASE}? Start it with: ENABLE_DEV_ROUTES=1 npm run dev`,
           },
           null,
           2,
@@ -124,11 +125,11 @@ function ok(value: unknown) {
 // ── Server ──────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: 'presence', version: '1.0.0' },
+  { name: 'humangate', version: '1.0.0' },
   {
     capabilities: { tools: {} },
     instructions: [
-      'Presence is an event queue where a human must be present at the moment a slot is handed over.',
+      'HumanGate is an event queue where a human must be present at the moment a slot is handed over.',
       '',
       'queue.join   — enter the queue. No approval needed.',
       'queue.status — see the draw rank, any slot allocated to you, and its countdown.',
@@ -254,16 +255,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main(): Promise<void> {
   // Diagnostics go to stderr: stdout belongs to the JSON-RPC stream and a stray
   // console.log there corrupts the protocol.
-  console.error(`[presence-mcp] stdio server · target ${BASE}`);
+  console.error(`[humangate-mcp] stdio server · target ${BASE}`);
   console.error(
     EVENT_ID
-      ? `[presence-mcp] scoped to event ${EVENT_ID}`
-      : '[presence-mcp] no PRESENCE_EVENT_ID — the server resolves the event per call',
+      ? `[humangate-mcp] scoped to event ${EVENT_ID}`
+      : '[humangate-mcp] no HUMANGATE_EVENT_ID — the server resolves the event per call',
   );
   console.error(
     TOKEN
-      ? '[presence-mcp] using PRESENCE_AGENT_TOKEN'
-      : '[presence-mcp] no PRESENCE_AGENT_TOKEN set — calls will be refused with not_authenticated. ' +
+      ? '[humangate-mcp] using HUMANGATE_AGENT_TOKEN'
+      : '[humangate-mcp] no HUMANGATE_AGENT_TOKEN set — calls will be refused with not_authenticated. ' +
           'Enroll one with: curl -sX POST localhost:3000/api/agent/enroll',
   );
   const transport = new StdioServerTransport();
@@ -271,6 +272,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('[presence-mcp] fatal:', err);
+  console.error('[humangate-mcp] fatal:', err);
   process.exit(1);
 });

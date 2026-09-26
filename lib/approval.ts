@@ -24,7 +24,7 @@
 import { getDb, nowMs } from './db';
 import { newId } from './ids';
 import { audit } from './audit';
-import { PresenceError, type ReasonCode } from './errors';
+import { HumanGateError, type ReasonCode } from './errors';
 import * as worldid from '../worldid';
 
 export type ApprovalKind = 'purchase';
@@ -195,7 +195,7 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
  */
 export async function syncApproval(approvalId: string): Promise<ApprovalRow> {
   const row = getApproval(approvalId);
-  if (!row) throw new PresenceError('approval_not_found', `no approval ${approvalId}`);
+  if (!row) throw new HumanGateError('approval_not_found', `no approval ${approvalId}`);
 
   if (row.state === 'CONSUMED' || row.state === 'DENIED' || row.state === 'EXPIRED') return row;
 
@@ -620,7 +620,7 @@ export function rejectApproval(approvalId: string, code: ReasonCode, message: st
 /** The UI/agent calls this after the human presses deny, so the state is immediate. */
 export function denyApproval(approvalId: string, reason: string): ApprovalRow {
   const row = getApproval(approvalId);
-  if (!row) throw new PresenceError('approval_not_found', `no approval ${approvalId}`);
+  if (!row) throw new HumanGateError('approval_not_found', `no approval ${approvalId}`);
   if (row.state === 'PENDING') {
     worldid.denyAuth(row.request_id, reason);
     getDb()

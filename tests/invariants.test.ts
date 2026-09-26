@@ -24,7 +24,7 @@ import {
   queueAndDraw,
   reset,
 } from './harness';
-import { PresenceError } from '../lib/errors';
+import { HumanGateError } from '../lib/errors';
 import { consumeProof, findConsumed } from '../lib/consume';
 import { requestClaimApproval, executeClaim, purchaseAction, purchaseSignal } from '../lib/gate';
 import { actorTally } from '../lib/audit';
@@ -43,11 +43,11 @@ import { settleLottery as _settle } from '../lib/queue';
 import * as worldid from '../worldid';
 
 /** Assert that `fn` refuses with `code`, and return the error. */
-async function refuses(code: string, fn: () => unknown | Promise<unknown>): Promise<PresenceError> {
+async function refuses(code: string, fn: () => unknown | Promise<unknown>): Promise<HumanGateError> {
   try {
     await fn();
   } catch (err) {
-    const e = err as PresenceError;
+    const e = err as HumanGateError;
     assert.equal(e.code, code, `expected refusal "${code}", got "${e.code}": ${e.message}`);
     return e;
   }
@@ -146,7 +146,7 @@ test('COUNTER-EXAMPLE — a generic action would let one human take many slots',
         });
       })();
     },
-    (err: PresenceError) => err.code === 'already_owns_entitlement',
+    (err: HumanGateError) => err.code === 'already_owns_entitlement',
     'an event-scoped action makes the SECOND purchase impossible, whatever proof is presented',
   );
 });
@@ -175,7 +175,7 @@ test('RED LINE 3 — a forged client verdict is refused outright', () => {
         guardForgedClientResult(forged);
         return null;
       } catch (e) {
-        return e as PresenceError;
+        return e as HumanGateError;
       }
     })();
     assert.ok(err, `expected ${JSON.stringify(forged)} to be refused`);
@@ -222,7 +222,7 @@ test('RED LINE 4 — a client-supplied environment is refused and named', () => 
       guardClientSuppliedEnvironment({ eventId: 'evt_x', environment: 'production' });
       return null;
     } catch (e) {
-      return e as PresenceError;
+      return e as HumanGateError;
     }
   })();
   assert.ok(err);
@@ -232,7 +232,7 @@ test('RED LINE 4 — a client-supplied environment is refused and named', () => 
   // Nested is refused too: smuggling it inside a proof object is the obvious try.
   assert.throws(
     () => guardClientSuppliedEnvironment({ approval: 'apv_1', proof: { environment: 'staging' } }),
-    (e: PresenceError) => e.code === 'environment_pinned',
+    (e: HumanGateError) => e.code === 'environment_pinned',
   );
 });
 
@@ -269,7 +269,7 @@ test('RED LINE 5 — the same nullifier cannot be consumed twice', () => {
         consumeProof(db, { nullifier: 'nul_fixed', boundAction: 'act_b', continuityId: human('bob') });
       })();
     },
-    (e: PresenceError) => e.code === 'proof_replay_detected',
+    (e: HumanGateError) => e.code === 'proof_replay_detected',
     'the PRIMARY KEY on consumed_proof.nullifier is the gate, not a SELECT-then-INSERT',
   );
 });
@@ -447,13 +447,13 @@ test('a self-call to a loopback https origin carries a dispatcher that trusts ou
   // certificate path instead — and unlike `next dev`, a child we spawn gets
   // exactly the environment we hand it.
   const env = selfCallEnv('https://localhost:3000');
-  assert.equal(env.PRESENCE_BASE_URL, 'https://localhost:3000');
+  assert.equal(env.HUMANGATE_BASE_URL, 'https://localhost:3000');
   if (hasCert) {
     assert.equal(env.NODE_EXTRA_CA_CERTS, cert, 'the MCP child must be told to trust our cert');
   }
 
   // A real deployment is untouched: no loopback, no certificate, no deviation.
-  const remote = selfCallEnv('https://presence.example.com');
+  const remote = selfCallEnv('https://humangate.example.com');
   assert.equal(remote.NODE_EXTRA_CA_CERTS, undefined, 'a real origin must get no TLS special-casing');
 
   // And plain http needs no trust at all.
@@ -972,7 +972,7 @@ test('T-1.1 — joining after the draw is closed', () => {
 
   assert.throws(
     () => joinQueue(event.id, human('late-arrival')),
-    (e: PresenceError) => e.code === 'queue_closed',
+    (e: HumanGateError) => e.code === 'queue_closed',
     'the window must close before the draw, or late arrivals could be counted after seeing the odds',
   );
 });
@@ -990,7 +990,7 @@ test('T-6.2 — dev routes 404 when ENABLE_DEV_ROUTES is unset', async () => {
     assertDevRoutes();
     assert.fail('assertDevRoutes must throw when the flag is off');
   } catch (err) {
-    const e = err as PresenceError;
+    const e = err as HumanGateError;
     assert.equal(e.code, 'dev_routes_disabled');
     assert.equal(e.httpStatus, 404, 'it must be indistinguishable from a route that does not exist');
   } finally {

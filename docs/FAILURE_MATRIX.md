@@ -86,7 +86,7 @@ screen.
 
 | # | Scenario | Where it surfaces | What the operator is told |
 |---|---|---|---|
-| 43a | `PRESENCE_PUBLIC_URL` and `WORLDID_REDIRECT_URI` disagree on origin | startup banner + `GET /api/health` → `urls.consistent: false` | both sides named, plus *"links the app renders will not open"* and the easiest fix |
+| 43a | `HUMANGATE_PUBLIC_URL` and `WORLDID_REDIRECT_URI` disagree on origin | startup banner + `GET /api/health` → `urls.consistent: false` | both sides named, plus *"links the app renders will not open"* and the easiest fix |
 | 43b | Real IdP credentials configured, but the public base URL is `http://` | startup banner | *"The sandbox portal only accepts https callbacks, so the browser will be redirected to a scheme this server is not serving."* |
 | 43c | `WORLDID_REDIRECT_URI` is not a parseable URL | startup banner + `urls.problem` | named as such; link building keeps working off the default rather than throwing mid-request |
 

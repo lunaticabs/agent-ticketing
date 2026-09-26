@@ -7,7 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 import { resolveCaller } from './session';
 import { applySandboxCookie, runInRequestContext } from './requestcontext';
 import type { AgentScope } from './agenttoken';
@@ -22,12 +22,12 @@ export function json(data: unknown, init?: ResponseInit): NextResponse {
 
 /** Map anything thrown into the structured refusal shape the UI and models read. */
 export function toErrorResponse(err: unknown): NextResponse {
-  if (err instanceof PresenceError) {
+  if (err instanceof HumanGateError) {
     return json(err.toBody(), { status: err.httpStatus });
   }
   const message = err instanceof Error ? err.message : String(err);
   // Never leak a stack trace to a client; log it server-side instead.
-  console.error('[presence] unhandled error:', err);
+  console.error('[humangate] unhandled error:', err);
   return json(
     {
       ok: false,
@@ -67,7 +67,7 @@ export function guardClientSuppliedEnvironment(body: Record<string, unknown>): v
   const hit = findKey(body, (k) => k.toLowerCase() === 'environment' || k.toLowerCase() === 'env');
   if (!hit) return;
 
-  throw new PresenceError(
+  throw new HumanGateError(
     'environment_pinned',
     'the environment is pinned by the server and cannot be supplied by a client',
     {
@@ -119,7 +119,7 @@ export function guardForgedClientResult(body: Record<string, unknown>): void {
 
   if (!reason) return;
 
-  throw new PresenceError('untrusted_client_result', reason, {
+  throw new HumanGateError('untrusted_client_result', reason, {
     httpStatus: 400,
     invariant: 'Track rule 4 / RED LINE 3 — the server verifies the proof itself and never trusts a client verdict',
     hint:
@@ -187,13 +187,13 @@ export function requireContinuity(req: NextRequest, scope?: AgentScope): string 
   const caller = resolveCaller(req, scope);
   if (!caller.continuityId) {
     if (caller.via === 'agent-token') {
-      throw new PresenceError('grant_scope_insufficient', `this agent token lacks the ${scope} scope`, {
+      throw new HumanGateError('grant_scope_insufficient', `this agent token lacks the ${scope} scope`, {
         httpStatus: 403,
         invariant: 'T-5.2 — an agent credential carries a scope and an expiry, not blanket authority',
         details: { held: caller.scope, required: scope },
       });
     }
-    throw new PresenceError('not_authenticated', 'sign in with World ID before joining the queue', {
+    throw new HumanGateError('not_authenticated', 'sign in with World ID before joining the queue', {
       httpStatus: 401,
       invariant: 'T-1.1 — only a verified human may enter the queue',
       hint: 'Start the sign-in flow at /api/auth/world/start, or enroll an agent at /api/agent/enroll.',

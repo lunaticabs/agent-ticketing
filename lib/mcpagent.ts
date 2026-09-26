@@ -67,7 +67,7 @@ import path from 'node:path';
 import { getDb, nowMs } from './db';
 import { newId } from './ids';
 import { audit } from './audit';
-import { PresenceError } from './errors';
+import { HumanGateError } from './errors';
 import { getEvent, getHuman, primaryEvent, type HumanRow } from './humans';
 import { issueAgentToken } from './agenttoken';
 import { assertDevRoutes } from './devmode';
@@ -203,7 +203,7 @@ export function startAgentSession(input: {
 
   const human = getHuman(input.actingFor);
   if (!human) {
-    throw new PresenceError('not_authenticated', 'the human this agent would act for does not exist', {
+    throw new HumanGateError('not_authenticated', 'the human this agent would act for does not exist', {
       httpStatus: 401,
       hint: 'Start the agent from a signed-in browser session.',
     });
@@ -302,18 +302,18 @@ async function run(
 
   try {
     // ── Connect ──
-    client = new Client({ name: 'presence-demo-agent', version: '1.0.0' }, { capabilities: {} });
+    client = new Client({ name: 'humangate-demo-agent', version: '1.0.0' }, { capabilities: {} });
     await client.connect(
       new StdioClientTransport({
         ...mcpServerCommand(),
         env: {
           ...process.env,
           ...selfCallEnv(base),
-          PRESENCE_AGENT_TOKEN: token,
+          HUMANGATE_AGENT_TOKEN: token,
           // The MCP server is its own process talking over HTTP, so it does not
           // inherit this request's event scope. Naming it here is what keeps an
           // agent's tool calls inside the visitor's own demo.
-          ...(eventId ? { PRESENCE_EVENT_ID: eventId } : {}),
+          ...(eventId ? { HUMANGATE_EVENT_ID: eventId } : {}),
         } as Record<string, string>,
         stderr: 'ignore',
       }),
@@ -684,6 +684,6 @@ export function assertSessionExists(id: string): AgentSessionRow {
   const row = getDb().prepare(`SELECT * FROM dev_agent_session WHERE id = ?`).get(id) as
     | AgentSessionRow
     | undefined;
-  if (!row) throw new PresenceError('not_found', `no agent session ${id}`, { httpStatus: 404 });
+  if (!row) throw new HumanGateError('not_found', `no agent session ${id}`, { httpStatus: 404 });
   return row;
 }

@@ -41,7 +41,7 @@ const PUBLIC_ORIGIN = 'https://agent-ticket-demo.fly.dev';
 
 /** Run `fn` with the URL configuration replaced, restoring it afterwards. */
 function withEnv(vars: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
-  const keys = ['PRESENCE_PUBLIC_URL', 'WORLDID_REDIRECT_URI'] as const;
+  const keys = ['HUMANGATE_PUBLIC_URL', 'WORLDID_REDIRECT_URI'] as const;
   const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const key of keys) {
     const value = vars[key];
@@ -80,7 +80,7 @@ function recordingDeps(): CallbackDeps & { seen: URL[] } {
 }
 
 test('C-1 — the origin the IdP sees is the configured one, not the internal binding', async () => {
-  await withEnv({ PRESENCE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
+  await withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
     const deps = recordingDeps();
     await handleCallback(proxiedRequest('code=abc&state=xyz'), deps);
 
@@ -103,7 +103,7 @@ test('C-1 — the origin the IdP sees is the configured one, not the internal bi
 });
 
 test('C-2 — `code` and `state` survive the rebuild untouched', async () => {
-  await withEnv({ PRESENCE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
+  await withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
     const deps = recordingDeps();
     await handleCallback(proxiedRequest('code=the-code&state=the-state&iss=extra'), deps);
 
@@ -115,7 +115,7 @@ test('C-2 — `code` and `state` survive the rebuild untouched', async () => {
 });
 
 test('C-3 — a failure redirects to the public origin, never to 0.0.0.0', async () => {
-  await withEnv({ PRESENCE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
+  await withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
     const response = await handleCallback(proxiedRequest('code=abc&state=xyz'), recordingDeps());
 
     assert.equal(response.status, 307, 'a redirect, not an error page');
@@ -129,11 +129,11 @@ test('C-3 — a failure redirects to the public origin, never to 0.0.0.0', async
   });
 });
 
-test('C-4 — the redirect URI wins even when PRESENCE_PUBLIC_URL is unset, as on Fly', async () => {
+test('C-4 — the redirect URI wins even when HUMANGATE_PUBLIC_URL is unset, as on Fly', async () => {
   // This is the deployed shape: only WORLDID_REDIRECT_URI is set, and
   // `publicBaseUrl()` derives the origin from it.
   await withEnv(
-    { PRESENCE_PUBLIC_URL: undefined, WORLDID_REDIRECT_URI: `${PUBLIC_ORIGIN}/api/auth/world/callback` },
+    { HUMANGATE_PUBLIC_URL: undefined, WORLDID_REDIRECT_URI: `${PUBLIC_ORIGIN}/api/auth/world/callback` },
     async () => {
       const deps = recordingDeps();
       await handleCallback(proxiedRequest('code=abc&state=xyz'), deps);
@@ -147,7 +147,7 @@ test('C-4 — the redirect URI wins even when PRESENCE_PUBLIC_URL is unset, as o
 });
 
 test('C-5 — an IdP-side refusal is reported as itself, and still lands on the public origin', async () => {
-  await withEnv({ PRESENCE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
+  await withEnv({ HUMANGATE_PUBLIC_URL: PUBLIC_ORIGIN }, async () => {
     const response = await handleCallback(
       proxiedRequest('error=access_denied&error_description=user%20said%20no'),
       recordingDeps(),
