@@ -57,6 +57,28 @@ COPY . .
 # decides instead, at run time.
 RUN npm run build
 
+# ── The MCP server, as one self-contained file ─────────────────────────────
+#
+# `/admin`'s "tell the agent to buy a ticket" button spawns `mcp/server.ts` as a
+# child process over stdio. In the image there was no `mcp/` directory at all —
+# the runtime stage copies the built app, and this file was never part of it — so
+# the child died instantly and the panel reported the only thing a dead stdio
+# transport can report: `MCP error -32000: Connection closed`.
+#
+# Copying the sources would not work either: `mcp/server.ts` imports
+# `../agent/client` as TypeScript, and the image has no interpreter for it. So it
+# is bundled here into a single plain-JS file, which is also the version least
+# likely to break — no source files, no path aliases, and only the MCP SDK left
+# external, resolved from the runtime's `node_modules`.
+RUN ./node_modules/.bin/esbuild mcp/server.ts \
+      --bundle --platform=node --format=esm \
+      --target=node22 \
+      --external:@modelcontextprotocol/sdk \
+      --outfile=dist/mcp-server.mjs \
+ && printf '{"type":"module"}\n' > dist/package.json \
+ && node --check dist/mcp-server.mjs \
+ && echo "[build] mcp server bundled: $(wc -c < dist/mcp-server.mjs) bytes"
+
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
@@ -74,6 +96,12 @@ COPY --from=build /app/next.config.ts ./next.config.ts
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/instrumentation.ts ./instrumentation.ts
 COPY --from=build /app/db/schema.sql ./db/schema.sql
+# The bundled MCP server the agent button spawns, with the `{"type":"module"}`
+# marker that lets Node read it as ESM (the app's own package.json is CommonJS
+# here, which would otherwise make `.mjs`... still ESM, but the marker keeps the
+# intent explicit and survives a rename).
+COPY --from=build /app/dist/mcp-server.mjs ./dist/mcp-server.mjs
+COPY --from=build /app/dist/package.json ./dist/package.json
 COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
 RUN chmod +x ./scripts/entrypoint.sh && mkdir -p /data
 

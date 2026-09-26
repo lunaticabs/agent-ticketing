@@ -16,6 +16,11 @@ next-env.d.ts
 .env.local
 .env.*.local
 
+# ── Build output ────────────────────────────────────────────────────────────
+# The bundled MCP server the Dockerfile produces. Machine-generated, and the
+# image builds it from source — never a thing to commit.
+/dist/
+
 # ── Local data / runtime state ──────────────────────────────────────────────
 # SQLite file is disposable: `npm run reset` deletes and re-seeds it.
 /db/*.db

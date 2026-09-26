@@ -62,6 +62,8 @@
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import fs from 'node:fs';
+import path from 'node:path';
 import { getDb, nowMs } from './db';
 import { newId } from './ids';
 import { audit } from './audit';
@@ -246,6 +248,36 @@ const TOOL_TIMEOUT_MS = 10_000;
 const DRAW_WAIT_MS = 90_000;
 const HUMAN_WAIT_MS = 120_000;
 
+/**
+ * How to start the MCP server in *this* deployment.
+ *
+ * Two shapes, and the image is the one that broke:
+ *
+ *   · `dist/mcp-server.mjs` — the bundle the Dockerfile builds. Plain JS, no
+ *     interpreter needed, and it exists only in the image.
+ *   · `mcp/server.ts` — run through tsx from a checkout, which is how every
+ *     local flow works.
+ *
+ * The distinction is not cosmetic. The production image originally spawned
+ * `tsx mcp/server.ts` while never copying `mcp/` into it, so the child process
+ * died on spawn with ENOENT and the panel reported the only thing a dead stdio
+ * transport can report:
+ *
+ *   the agent failed — MCP error -32000: Connection closed
+ *
+ * which names neither the missing file nor the process that never started. The
+ * bundle is preferred when present because that is the deployment, and the
+ * fallback keeps a checkout working without a build step.
+ *
+ * The local binary, not `npx`: npx re-resolves the package on every spawn, which
+ * turns a 170ms connect into a multi-second one.
+ */
+function mcpServerCommand(): { command: string; args: string[] } {
+  const bundled = path.join(process.cwd(), 'dist', 'mcp-server.mjs');
+  if (fs.existsSync(bundled)) return { command: process.execPath, args: [bundled] };
+  return { command: './node_modules/.bin/tsx', args: ['mcp/server.ts'] };
+}
+
 async function run(
   sessionId: string,
   continuityId: string,
@@ -270,10 +302,7 @@ async function run(
     client = new Client({ name: 'presence-demo-agent', version: '1.0.0' }, { capabilities: {} });
     await client.connect(
       new StdioClientTransport({
-        // The local binary, not `npx`: npx re-resolves the package on every spawn,
-        // which turns a 170ms connect into a multi-second one.
-        command: './node_modules/.bin/tsx',
-        args: ['mcp/server.ts'],
+        ...mcpServerCommand(),
         env: {
           ...process.env,
           ...selfCallEnv(base),
