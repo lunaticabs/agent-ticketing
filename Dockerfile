@@ -10,7 +10,15 @@
 #
 #   * `node:22`, pinned. The Node ABI decides which prebuilt binary is
 #     downloaded; a brand-new major line may not have one yet, and the fallback
-#     is a source build that needs a toolchain this image deliberately omits.
+#     is a source build that needs the toolchain below.
+#
+#   * The toolchain IS installed, in both build stages. This file originally
+#     assumed `better-sqlite3` would fetch a prebuild — it did not, and the build
+#     died inside `node-gyp` with "Could not find any Python installation". A
+#     prebuild is a convenience, not a guarantee: it depends on the Node ABI
+#     having a published binary, which is exactly the sort of thing that changes
+#     without warning. ~200MB of build-only toolchain buys a build that works
+#     either way, and none of it reaches the runtime image.
 #
 #   * No `output: 'standalone'`. It exists to shrink the runtime image and it
 #     would — at the cost of hand-copying `better-sqlite3`'s `.node` binary and
@@ -24,14 +32,24 @@
 #
 #   * There is no `npm run seed` step, at build time or in a release command.
 #     Both run without the volume, and Fly's own SQLite guidance says so. The
-#     app seeds itself at startup instead — see `instrumentation.ts`.
+#     app seeds itself on the path that needs the event — see `lib/sandbox.ts`.
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
+# Build-only: compiling a native module when no prebuild matches this ABI.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
+# `next build` does not compile native modules, but this stage also runs
+# `npm ci` on a cold cache, and a missing toolchain would then fail the build
+# step rather than the dependency step — a much more confusing place to find out.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # There is no `.env*` in this context (see .dockerignore): a developer's laptop
