@@ -338,7 +338,7 @@ export async function executeClaim(input: ExecuteClaimInput): Promise<ExecuteCla
       {
         invariant: 'Track rule 4 / RED LINE 3 — the server verifies, and never trusts the caller',
         hint:
-          'Ask the human to authorize first (POST /api/slot/claim/request), then present the ' +
+          'Ask the human to authorize first (POST /api/slot/request), then present the ' +
           'returned approval reference. The server re-verifies it independently.',
         httpStatus: 428,
       },

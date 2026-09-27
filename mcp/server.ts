@@ -141,7 +141,7 @@ const server = new Server(
       'authenticated recently enough, and consumes it exactly once. A fabricated or reused value will',
       'be refused, and the refusal will tell you which check failed.',
       '',
-      'An approval can only be created by asking the human: POST /api/slot/claim/request, then have',
+      'An approval can only be created by asking the human: POST /api/slot/request, then have',
       'them approve on their own device. You cannot mint one, and you should not try to work around',
       'that — it is the entire design.',
       '',
@@ -185,7 +185,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description:
         'Claim the slot currently allocated to this human. REQUIRES `approval`: a server-issued ' +
         'reference proving that a human authorized this exact operation, obtained by asking them ' +
-        '(POST /api/slot/claim/request). The server verifies it independently — presence of the ' +
+        '(POST /api/slot/request). The server verifies it independently — presence of the ' +
         'argument is not sufficient, and a fabricated, reused, expired, or differently-bound value ' +
         'is refused with a structured reason.',
       inputSchema: {
