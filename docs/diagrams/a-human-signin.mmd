@@ -1,0 +1,22 @@
+sequenceDiagram
+    autonumber
+    participant B as Browser / phone
+    participant S as Our server (Next.js)
+    participant I as World IdP
+
+    B->>S: POST /api/auth/world/start
+    Note over S: createAuthRequest(state=PENDING)<br/>code_verifier · nonce · state — they never leave the server
+    S->>I: GET /api/v1/authorize<br/>scope=openid · S256 PKCE · max_age=0 · acr=…/orb-v3
+    S-->>B: url, requestId
+
+    Note over B,I: the human opens the URL on their own phone,<br/>proves who they are, and approves
+
+    I-->>B: redirect /api/auth/world/callback?code=…&state=…
+    B->>S: GET callback (code, state)
+    Note over S: findAuthRequestByState — must be PENDING and unexpired
+    S->>I: POST /api/v1/token (code + PKCE verifier)
+    I-->>S: ID token
+    Note over S: validate state · nonce · PKCE · exact issuer<br/>RS256 vs discovered JWKS · audience · expiry<br/>max_age vs auth_time
+    Note over S: markApproved(proof_ref = raw ID token)<br/>the token stays server-side
+    Note over S: ensureHuman(issuer, subject)<br/>UNIQUE (issuer, subject)
+    S-->>B: 302 + Set-Cookie presence_session<br/>HMAC · httpOnly · sameSite=lax · 12 h

@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    participant A as Agent process
+    participant S as Our server
+    participant I as World IdP
+    participant H as Human's phone
+
+    A->>S: POST /api/agent/enroll
+    S->>I: POST /api/v1/device_authorization
+    I-->>S: device_code · user_code · verification_uri
+    S-->>A: userCode, verificationUri
+    Note over S: startDevicePolling() — detached from the HTTP request
+
+    Note over H: the human enters the code on their own device and approves
+    H->>I: World App proves and approves
+    S->>I: poll with device_code
+    I-->>S: tokens
+    Note over S: markApproved(proof_ref = raw ID token)
+
+    A->>S: GET /api/agent/enroll?enrollId=…
+    Note over S: awaitAuthResult() — a pure database read,<br/>so a restarted agent still collects its result
+    Note over S: ensureHuman() then issueAgentToken(cid, scope, 4 h)
+    S-->>A: OUR bearer token
+    Note over A,I: the IdP's token is never handed to the agent

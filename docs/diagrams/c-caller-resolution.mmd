@@ -1,0 +1,10 @@
+flowchart TD
+    R["Incoming request<br/>wrapped in route()"] --> Q{"Which credential<br/>is present?"}
+    Q -->|"presence_session cookie"| C["verify HMAC<br/>(timingSafeEqual)"]
+    Q -->|"Authorization: Bearer"| T["agent token<br/>HMAC → exp → cid → scope"]
+    Q -->|"neither"| E1["401 not_authenticated"]
+    T -->|"scope missing"| E2["403 grant_scope_insufficient"]
+    C --> CID1["continuity_id<br/>actor: human"]
+    T -->|"scope ok"| CID2["continuity_id<br/>actor: agent"]
+    CID1 --> Z["the SAME continuity_id<br/>no agent-mode flag anywhere<br/>in the business logic"]
+    CID2 --> Z

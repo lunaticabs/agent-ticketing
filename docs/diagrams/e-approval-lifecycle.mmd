@@ -1,0 +1,16 @@
+stateDiagram-v2
+    direction LR
+    [*] --> PENDING : requestApproval()
+
+    PENDING --> APPROVED : the human approves on their own device
+    APPROVED --> CONSUMED : the gate re-verifies, then the transaction commits
+
+    PENDING --> DENIED : the human denies — the only edge a client can push
+    PENDING --> EXPIRED : the window closes with no answer
+
+    APPROVED --> EXPIRED : the window closes before the claim
+    APPROVED --> DENIED : a denial lands after the approval
+
+    CONSUMED --> [*]
+    DENIED --> [*]
+    EXPIRED --> [*]

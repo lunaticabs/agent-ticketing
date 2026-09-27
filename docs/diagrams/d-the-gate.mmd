@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    participant AG as Agent (MCP)
+    participant S as Our server
+    participant H as Human's phone
+
+    Note over AG,H: stage 1 · requested — actor: agent or human
+    AG->>S: POST /api/slot/request
+    Note over S: describeClaimTarget() sweeps first<br/>one outstanding approval per (human, slot)
+    Note over S: requestApproval(action = buy_slot:eventId<br/>signal = eventId:cid · max_age = 0)<br/>expires_at = slot.approval_deadline
+    S-->>AG: approvalId, url
+
+    Note over AG,H: stage 2 · completed — actor: human
+    H->>S: the human's browser returns from the IdP
+    Note over S: auth_request APPROVED, copied onto the approval row<br/>the only state a client can push is a denial
+
+    Note over AG,H: stage 3 · verified — actor: server<br/>stage 4 · executed — actor: agent
+    AG->>S: POST /api/slot/claim with an approval
+    Note over S: guards → 400 environment_pinned / untrusted_client_result
+    Note over S: no approval at all → 428 approval_required
+    Note over S: resolveApprovalRef() — a lookup, never belief
+    Note over S: verifyOnServer() — must be APPROVED, action and signal match<br/>artefact re-validated · freshness judged NOW<br/>nullifier RE-DERIVED from the expected operation
+
+    alt every check passes
+        Note over S: one transaction — consumeProof() PRIMARY KEY<br/>then confirmSlot() and markExecuted()
+        S-->>AG: 200 stage executed
+    else any check fails
+        S-->>AG: 4xx structured refusal — the action did NOT run
+    end
